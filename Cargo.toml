@@ -1,0 +1,17 @@
+[package]
+name = "canvasette"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+wgpu = "22.1.0"
+spright = { path = "../spright" }
+cosmic-text = "0.12.1"
+etagere = "0.2.13"
+rgb = "0.8.50"
+thiserror = "1"
+
+[dev-dependencies]
+winit = "0.30"
+pollster = "0.3.0"
+image = { version = "0.25.2", default-features = false, features = ["png"] }
