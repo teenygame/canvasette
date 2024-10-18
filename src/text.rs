@@ -29,13 +29,20 @@ pub struct SpriteMaker {
 impl SpriteMaker {
     pub fn new(device: &wgpu::Device) -> Self {
         Self {
-            font_system: cosmic_text::FontSystem::new(),
+            font_system: cosmic_text::FontSystem::new_with_locale_and_db(
+                sys_locale::get_locale().unwrap_or_else(|| "en-US".to_string()),
+                cosmic_text::fontdb::Database::new(),
+            ),
             swash_cache: cosmic_text::SwashCache::new(),
             mask_atlas: Atlas::new(device, wgpu::TextureFormat::R8Unorm),
             color_atlas: Atlas::new(device, wgpu::TextureFormat::Rgba8UnormSrgb),
             last_cache_keys: HashSet::new(),
             cache_keys: HashSet::new(),
         }
+    }
+
+    pub fn add_font(&mut self, font: &[u8]) {
+        self.font_system.db_mut().load_font_data(font.to_vec());
     }
 
     pub fn mask_texture(&self) -> &wgpu::Texture {
@@ -46,17 +53,7 @@ impl SpriteMaker {
         self.color_atlas.texture()
     }
 
-    pub fn make(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        section: &Section,
-    ) -> Option<TextSprites> {
-        let mut text_sprites = TextSprites {
-            color: vec![],
-            mask: vec![],
-        };
-
+    pub fn create_buffer_from_section(&mut self, section: &Section) -> cosmic_text::Buffer {
         let mut buffer = cosmic_text::Buffer::new(&mut self.font_system, section.metrics);
         buffer.set_text(
             &mut self.font_system,
@@ -64,6 +61,20 @@ impl SpriteMaker {
             section.attrs,
             cosmic_text::Shaping::Advanced,
         );
+        buffer
+    }
+
+    pub fn make(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        buffer: &cosmic_text::Buffer,
+        color: Color,
+    ) -> Option<TextSprites> {
+        let mut text_sprites = TextSprites {
+            color: vec![],
+            mask: vec![],
+        };
 
         for run in buffer.layout_runs() {
             for glyph in run.glyphs.iter() {
@@ -89,7 +100,7 @@ impl SpriteMaker {
                         glyph
                             .color_opt
                             .map(|v| Color::new(v.r(), v.g(), v.b(), v.a()))
-                            .unwrap_or(section.color),
+                            .unwrap_or(color),
                     ),
                     cosmic_text::SwashContent::Color => (
                         &mut text_sprites.color,
@@ -120,8 +131,7 @@ impl SpriteMaker {
                     transform: spright::AffineTransform::translation(
                         physical_glyph.x as f32 + image.placement.left as f32,
                         physical_glyph.y as f32 + run.line_top - image.placement.top as f32,
-                    ) * section.transform.clone(),
-
+                    ),
                     tint,
                 })
             }

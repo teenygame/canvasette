@@ -44,12 +44,11 @@ struct Inner {
 
 impl Inner {
     fn new(gfx: &Graphics) -> Self {
-        let [w, h]: [u32; 2] = gfx.window.inner_size().into();
-        let renderer = Renderer::new(
+        let mut renderer = Renderer::new(
             &gfx.device,
             gfx.surface.get_capabilities(&gfx.adapter).formats[0],
-            [w, h],
         );
+        renderer.add_font(include_bytes!("NotoSans-Regular.ttf"));
         Self {
             sprite1_x_pos: 0.0,
             renderer,
@@ -66,12 +65,24 @@ impl Inner {
         }
     }
 
-    pub fn resize(&mut self, queue: &Queue, screen_size: winit::dpi::PhysicalSize<u32>) {
-        self.renderer
-            .resize(queue, [screen_size.width, screen_size.height]);
-    }
-
     pub fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, texture: &wgpu::Texture) {
+        let target = device.create_texture(&wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d {
+                width: 1000,
+                height: 1000,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: texture.format(),
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                | wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::COPY_SRC,
+            view_formats: &[],
+        });
+
         let mut scene = Scene::new(spright::AffineTransform::IDENTITY);
 
         scene.draw_sprite(
@@ -92,35 +103,61 @@ impl Inner {
                     * spright::AffineTransform::rotation(self.sprite1_x_pos * 0.01),
             );
             scene.draw_text(
-                format!(
-                    "HELLO WORLD {}\n😂\nよろしく\nفيهن انفسكم وقاتلوا المشركين كافة كما",
-                    self.sprite1_x_pos
-                ),
+                format!("HELLO WORLD {}", self.sprite1_x_pos),
                 10.0,
                 100.0,
                 canvasette::Color::new(0xff, 0xff, 0x00, 0xff),
-                cosmic_text::Metrics::relative(200.0, 1.0),
-                cosmic_text::Attrs::new().family(cosmic_text::Family::SansSerif),
+                canvasette::font::Metrics::relative(200.0, 1.0),
+                canvasette::font::Attrs::default(),
             );
-            {
-                let scene = scene.add_child(spright::AffineTransform::translation(200.0, 200.0));
-                scene.draw_sprite(
-                    &self.texture1,
-                    0.0,
-                    0.0,
-                    280.0,
-                    210.0,
-                    0.0,
-                    0.0,
-                    280.0,
-                    210.0,
-                );
-            }
         }
+        {
+            let scene = scene.add_child(spright::AffineTransform::translation(200.0, 200.0));
+            scene.draw_sprite(
+                &self.texture1,
+                0.0,
+                0.0,
+                280.0,
+                210.0,
+                0.0,
+                0.0,
+                280.0,
+                210.0,
+            );
+        }
+
+        let prepared = self
+            .renderer
+            .prepare(device, queue, target.size(), &scene)
+            .unwrap();
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        {
+            let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &target.create_view(&wgpu::TextureViewDescriptor::default()),
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Load,
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                ..Default::default()
+            });
+            self.renderer.render(&mut rpass, &prepared);
+        }
+        queue.submit(Some(encoder.finish()));
+
         self.sprite1_x_pos += 1.0;
 
-        self.renderer.prepare(&scene, device, queue).unwrap();
-
+        let mut scene = Scene::new(spright::AffineTransform::IDENTITY);
+        scene.draw_sprite(
+            &target, 0.0, 0.0, 1000.0, 1000.0, 10.0, 10.0, 1000.0, 1000.0,
+        );
+        let prepared = self
+            .renderer
+            .prepare(device, queue, texture.size(), &scene)
+            .unwrap();
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
         {
@@ -135,7 +172,7 @@ impl Inner {
                 })],
                 ..Default::default()
             });
-            self.renderer.render(&mut rpass);
+            self.renderer.render(&mut rpass, &prepared);
         }
         queue.submit(Some(encoder.finish()));
     }
@@ -222,17 +259,6 @@ impl ApplicationHandler<UserEvent> for Application {
         event: WindowEvent,
     ) {
         match event {
-            WindowEvent::Resized(new_size) => {
-                let Some(gfx) = &mut self.gfx else {
-                    return;
-                };
-                gfx.resize(new_size);
-
-                let Some(inner) = &mut self.inner else {
-                    return;
-                };
-                inner.resize(&gfx.queue, new_size);
-            }
             WindowEvent::RedrawRequested => {
                 let Some(gfx) = &mut self.gfx else {
                     return;

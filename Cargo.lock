@@ -234,6 +234,7 @@ dependencies = [
  "pollster",
  "rgb",
  "spright",
+ "sys-locale",
  "thiserror",
  "wgpu",
  "winit",
@@ -1689,7 +1690,7 @@ dependencies = [
 
 [[package]]
 name = "spright"
-version = "0.6.0"
+version = "0.7.0"
 dependencies = [
  "bytemuck",
  "image",

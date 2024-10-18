@@ -1,7 +1,11 @@
 mod atlas;
+#[cfg(feature = "text")]
+pub mod font;
+#[cfg(feature = "text")]
 mod text;
 
 pub type Color = rgb::Rgba<u8>;
+pub use spright::AffineTransform;
 
 #[derive(Clone)]
 struct SpriteGroup<'a> {
@@ -11,6 +15,7 @@ struct SpriteGroup<'a> {
 
 enum Command<'a> {
     Sprites(Vec<SpriteGroup<'a>>),
+    #[cfg(feature = "text")]
     Text(Vec<text::Section<'a>>),
 }
 
@@ -21,7 +26,7 @@ pub struct Scene<'a> {
 }
 
 impl<'a> Scene<'a> {
-    pub fn new(transform: spright::AffineTransform) -> Self {
+    pub fn new(transform: AffineTransform) -> Self {
         Self {
             transform,
             commands: vec![],
@@ -29,7 +34,7 @@ impl<'a> Scene<'a> {
         }
     }
 
-    pub fn add_child(&mut self, transform: spright::AffineTransform) -> &mut Scene<'a> {
+    pub fn add_child(&mut self, transform: AffineTransform) -> &mut Scene<'a> {
         self.children.push(Scene::new(transform));
         self.children.last_mut().unwrap()
     }
@@ -55,7 +60,7 @@ impl<'a> Scene<'a> {
                 height: sheight,
             },
             dest_size: spright::Size { width, height },
-            transform: spright::AffineTransform::translation(x, y),
+            transform: AffineTransform::translation(x, y),
             tint: spright::Color::new(0xff, 0xff, 0xff, 0xff),
         };
         if let Some(Command::Sprites(groups)) = self.commands.last_mut() {
@@ -79,21 +84,26 @@ impl<'a> Scene<'a> {
     }
 
     /// Queues text to be drawn.
+    #[cfg(feature = "text")]
     pub fn draw_text(
         &mut self,
         text: impl AsRef<str>,
         x: f32,
         y: f32,
         color: Color,
-        metrics: cosmic_text::Metrics,
-        attrs: cosmic_text::Attrs<'a>,
+        metrics: font::Metrics,
+        attrs: font::Attrs<'a>,
     ) {
         let section = text::Section {
             contents: text.as_ref().to_owned(),
             transform: spright::AffineTransform::translation(x, y),
             color,
             metrics,
-            attrs,
+            attrs: cosmic_text::Attrs::new()
+                .family(attrs.family)
+                .stretch(attrs.stretch)
+                .style(attrs.style)
+                .weight(attrs.weight),
         };
 
         if let Some(Command::Text(sections)) = self.commands.last_mut() {
@@ -104,20 +114,23 @@ impl<'a> Scene<'a> {
     }
 }
 
+pub struct Prepared(spright::Prepared);
+
 pub struct Renderer {
     renderer: spright::Renderer,
+    #[cfg(feature = "text")]
     text_sprite_maker: text::SpriteMaker,
-    prepared: Option<spright::Prepared>,
 }
 
 #[derive(thiserror::Error, Debug)]
-pub enum PrepareError {
+pub enum Error {
     #[error("out of glylph atlas space")]
     OutOfGlyphAtlasSpace,
 }
 
 enum StagedGroup<'a> {
     Sprites(SpriteGroup<'a>),
+    #[cfg(feature = "text")]
     Text {
         sprites: Vec<spright::Sprite>,
         use_color_texture: bool,
@@ -125,20 +138,17 @@ enum StagedGroup<'a> {
 }
 
 impl Renderer {
-    pub fn new(
-        device: &wgpu::Device,
-        texture_format: wgpu::TextureFormat,
-        [width, height]: [u32; 2],
-    ) -> Self {
+    pub fn new(device: &wgpu::Device, texture_format: wgpu::TextureFormat) -> Self {
         Self {
-            renderer: spright::Renderer::new(device, texture_format, [width as f32, height as f32]),
+            renderer: spright::Renderer::new(device, texture_format),
+            #[cfg(feature = "text")]
             text_sprite_maker: text::SpriteMaker::new(device),
-            prepared: None,
         }
     }
 
-    pub fn resize(&mut self, queue: &wgpu::Queue, [width, height]: [u32; 2]) {
-        self.renderer.resize(queue, [width as f32, height as f32]);
+    #[cfg(feature = "text")]
+    pub fn add_font(&mut self, font: &[u8]) {
+        self.text_sprite_maker.add_font(font);
     }
 
     fn flatten_and_stage_scene<'a>(
@@ -147,7 +157,7 @@ impl Renderer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         parent_transform: spright::AffineTransform,
-    ) -> Result<Vec<StagedGroup<'a>>, PrepareError> {
+    ) -> Result<Vec<StagedGroup<'a>>, Error> {
         let mut groups = vec![];
 
         let transform = scene.transform * parent_transform;
@@ -169,12 +179,16 @@ impl Renderer {
                         })
                     }));
                 }
+                #[cfg(feature = "text")]
                 Command::Text(sections) => {
                     for section in sections {
+                        let transform = section.transform * transform;
+
+                        let buffer = self.text_sprite_maker.create_buffer_from_section(section);
                         let allocation = self
                             .text_sprite_maker
-                            .make(device, queue, section)
-                            .ok_or(PrepareError::OutOfGlyphAtlasSpace)?;
+                            .make(device, queue, &buffer, section.color)
+                            .ok_or(Error::OutOfGlyphAtlasSpace)?;
 
                         if !allocation.color.is_empty() {
                             groups.push(StagedGroup::Text {
@@ -217,16 +231,21 @@ impl Renderer {
 
     pub fn prepare(
         &mut self,
-        scene: &Scene,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-    ) -> Result<(), PrepareError> {
+        target_size: wgpu::Extent3d,
+        scene: &Scene,
+    ) -> Result<Prepared, Error> {
         let groups =
             self.flatten_and_stage_scene(scene, device, queue, spright::AffineTransform::IDENTITY)?;
 
-        self.prepared = Some(
+        #[cfg(feature = "text")]
+        self.text_sprite_maker.flush(queue);
+
+        Ok(Prepared(
             self.renderer.prepare(
                 device,
+                target_size,
                 &groups
                     .iter()
                     .map(|g| match g {
@@ -235,6 +254,7 @@ impl Renderer {
                             texture_kind: spright::TextureKind::Color,
                             sprites: &g.sprites,
                         },
+                        #[cfg(feature = "text")]
                         StagedGroup::Text {
                             sprites,
                             use_color_texture,
@@ -254,17 +274,14 @@ impl Renderer {
                     })
                     .collect::<Vec<_>>(),
             ),
-        );
-
-        self.text_sprite_maker.flush(queue);
-
-        Ok(())
+        ))
     }
 
-    pub fn render<'rpass>(&'rpass self, rpass: &'rpass mut wgpu::RenderPass<'rpass>) {
-        let Some(prepared) = &self.prepared else {
-            return;
-        };
-        self.renderer.render(rpass, prepared);
+    pub fn render<'rpass>(
+        &'rpass self,
+        rpass: &'rpass mut wgpu::RenderPass<'rpass>,
+        prepared: &'rpass Prepared,
+    ) {
+        self.renderer.render(rpass, &prepared.0);
     }
 }
