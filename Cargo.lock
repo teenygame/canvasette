@@ -1691,6 +1691,8 @@ dependencies = [
 [[package]]
 name = "spright"
 version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6415afe00d830e60af08c16f6cbe1c82032592806067a53fe5676a8245f08a64"
 dependencies = [
  "bytemuck",
  "image",

@@ -83,7 +83,7 @@ impl Inner {
             view_formats: &[],
         });
 
-        let mut scene = Scene::new(spright::AffineTransform::IDENTITY);
+        let mut scene = Scene::default();
 
         scene.draw_sprite(
             &self.texture2,
@@ -152,7 +152,7 @@ impl Inner {
 
         self.sprite1_x_pos += 1.0;
 
-        let mut scene = Scene::new(spright::AffineTransform::IDENTITY);
+        let mut scene = Scene::default();
         scene.draw_sprite(
             &target, 0.0, 0.0, 1000.0, 1000.0, 10.0, 10.0, 1000.0, 1000.0,
         );

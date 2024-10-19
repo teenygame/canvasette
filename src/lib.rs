@@ -1,11 +1,18 @@
+//! canvasette is a minimal library for wgpu that draws sprites and text. That's it!
+
 mod atlas;
 #[cfg(feature = "text")]
 pub mod font;
 #[cfg(feature = "text")]
 mod text;
 
+/// 8-bit RGBA color.
 pub type Color = rgb::Rgba<u8>;
+
 pub use spright::AffineTransform;
+
+#[cfg(feature = "text")]
+pub use text::PreparedText;
 
 #[derive(Clone)]
 struct SpriteGroup<'a> {
@@ -19,6 +26,7 @@ enum Command<'a> {
     Text(Vec<text::Section>),
 }
 
+/// A representation of what is queued for rendering.
 pub struct Scene<'a> {
     transform: spright::AffineTransform,
     commands: Vec<Command<'a>>,
@@ -32,7 +40,7 @@ impl<'a> Default for Scene<'a> {
 }
 
 impl<'a> Scene<'a> {
-    pub fn new(transform: AffineTransform) -> Self {
+    fn new(transform: AffineTransform) -> Self {
         Self {
             transform,
             commands: vec![],
@@ -40,6 +48,7 @@ impl<'a> Scene<'a> {
         }
     }
 
+    /// Adds a child scene, inheriting the transform of its parent.
     pub fn add_child(&mut self, transform: AffineTransform) -> &mut Scene<'a> {
         self.children.push(Scene::new(transform));
         self.children.last_mut().unwrap()
@@ -106,16 +115,20 @@ impl<'a> Scene<'a> {
     }
 }
 
+/// A scene that has been prepared for rendering.
 pub struct Prepared(spright::Prepared);
 
+/// Encapsulates renderer state.
 pub struct Renderer {
     renderer: spright::Renderer,
     #[cfg(feature = "text")]
     text_sprite_maker: text::SpriteMaker,
 }
 
+/// Errors that can occur.
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
+    /// Glyph atlas has run out of space.
     #[error("out of glylph atlas space")]
     OutOfGlyphAtlasSpace,
 }
@@ -130,6 +143,7 @@ enum StagedGroup<'a> {
 }
 
 impl Renderer {
+    /// Creates a new renderer.
     pub fn new(device: &wgpu::Device, texture_format: wgpu::TextureFormat) -> Self {
         Self {
             renderer: spright::Renderer::new(device, texture_format),
@@ -138,11 +152,13 @@ impl Renderer {
         }
     }
 
+    /// Adds a font to the renderer.
     #[cfg(feature = "text")]
     pub fn add_font(&mut self, font: &[u8]) {
         self.text_sprite_maker.add_font(font);
     }
 
+    /// Prepares text for rendering.
     #[cfg(feature = "text")]
     pub fn prepare_text(
         &mut self,
@@ -231,6 +247,7 @@ impl Renderer {
         Ok(groups)
     }
 
+    /// Prepares a scene for rendering.
     pub fn prepare(
         &mut self,
         device: &wgpu::Device,
@@ -279,6 +296,7 @@ impl Renderer {
         ))
     }
 
+    /// Renders a prepared scene.
     pub fn render<'rpass>(
         &'rpass self,
         rpass: &'rpass mut wgpu::RenderPass<'rpass>,

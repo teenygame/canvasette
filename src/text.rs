@@ -24,7 +24,21 @@ pub struct SpriteMaker {
     cache_keys: HashSet<cosmic_text::CacheKey>,
 }
 
+/// Text that has been laid out and shaped.
 pub struct PreparedText(cosmic_text::Buffer);
+
+impl PreparedText {
+    /// Computes the bounding box of the text.
+    pub fn bounding_box(&self) -> [f32; 2] {
+        let mut width = 0.0f32;
+        let mut height = 0.0f32;
+        for run in self.0.layout_runs() {
+            width = width.max(run.line_w);
+            height = run.line_top + run.line_height;
+        }
+        [width, height]
+    }
+}
 
 impl SpriteMaker {
     pub fn new(device: &wgpu::Device) -> Self {
