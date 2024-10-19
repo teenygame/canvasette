@@ -1,7 +1,9 @@
 [package]
 name = "canvasette"
+description = "A minimal library for wgpu that draws sprites and text"
 version = "0.1.0"
 edition = "2021"
+license = "LGPL-3.0-or-later"
 
 [features]
 default = ["text"]
