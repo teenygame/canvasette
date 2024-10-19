@@ -25,6 +25,12 @@ pub struct Scene<'a> {
     children: Vec<Scene<'a>>,
 }
 
+impl<'a> Default for Scene<'a> {
+    fn default() -> Self {
+        Self::new(AffineTransform::IDENTITY)
+    }
+}
+
 impl<'a> Scene<'a> {
     pub fn new(transform: AffineTransform) -> Self {
         Self {
