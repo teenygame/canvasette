@@ -103,12 +103,14 @@ impl Inner {
                     * spright::AffineTransform::rotation(self.sprite1_x_pos * 0.01),
             );
             scene.draw_text(
-                format!("HELLO WORLD {}", self.sprite1_x_pos),
+                self.renderer.prepare_text(
+                    format!("HELLO WORLD {}", self.sprite1_x_pos),
+                    canvasette::font::Metrics::relative(200.0, 1.0),
+                    canvasette::font::Attrs::default(),
+                ),
                 10.0,
                 100.0,
                 canvasette::Color::new(0xff, 0xff, 0x00, 0xff),
-                canvasette::font::Metrics::relative(200.0, 1.0),
-                canvasette::font::Attrs::default(),
             );
         }
         {

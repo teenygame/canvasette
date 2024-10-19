@@ -1,13 +1,13 @@
-pub use cosmic_text::{Family, Metrics, Stretch, Style, Weight};
+pub use cosmic_text::{FamilyOwned as Family, Metrics, Stretch, Style, Weight};
 
-pub struct Attrs<'a> {
-    pub family: Family<'a>,
+pub struct Attrs {
+    pub family: Family,
     pub stretch: Stretch,
     pub style: Style,
     pub weight: Weight,
 }
 
-impl<'a> Default for Attrs<'a> {
+impl Default for Attrs {
     fn default() -> Self {
         Self {
             family: Family::SansSerif,

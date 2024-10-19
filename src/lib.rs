@@ -16,7 +16,7 @@ struct SpriteGroup<'a> {
 enum Command<'a> {
     Sprites(Vec<SpriteGroup<'a>>),
     #[cfg(feature = "text")]
-    Text(Vec<text::Section<'a>>),
+    Text(Vec<text::Section>),
 }
 
 pub struct Scene<'a> {
@@ -91,25 +91,11 @@ impl<'a> Scene<'a> {
 
     /// Queues text to be drawn.
     #[cfg(feature = "text")]
-    pub fn draw_text(
-        &mut self,
-        text: impl AsRef<str>,
-        x: f32,
-        y: f32,
-        color: Color,
-        metrics: font::Metrics,
-        attrs: font::Attrs<'a>,
-    ) {
+    pub fn draw_text(&mut self, prepared: text::PreparedText, x: f32, y: f32, color: Color) {
         let section = text::Section {
-            contents: text.as_ref().to_owned(),
+            prepared,
             transform: spright::AffineTransform::translation(x, y),
             color,
-            metrics,
-            attrs: cosmic_text::Attrs::new()
-                .family(attrs.family)
-                .stretch(attrs.stretch)
-                .style(attrs.style)
-                .weight(attrs.weight),
         };
 
         if let Some(Command::Text(sections)) = self.commands.last_mut() {
@@ -157,6 +143,17 @@ impl Renderer {
         self.text_sprite_maker.add_font(font);
     }
 
+    #[cfg(feature = "text")]
+    pub fn prepare_text(
+        &mut self,
+        contents: impl AsRef<str>,
+        metrics: font::Metrics,
+        attrs: font::Attrs,
+    ) -> text::PreparedText {
+        self.text_sprite_maker
+            .prepare(contents.as_ref(), metrics, attrs)
+    }
+
     fn flatten_and_stage_scene<'a>(
         &mut self,
         scene: &'a Scene,
@@ -190,10 +187,9 @@ impl Renderer {
                     for section in sections {
                         let transform = section.transform * transform;
 
-                        let buffer = self.text_sprite_maker.create_buffer_from_section(section);
                         let allocation = self
                             .text_sprite_maker
-                            .make(device, queue, &buffer, section.color)
+                            .make(device, queue, &section.prepared, section.color)
                             .ok_or(Error::OutOfGlyphAtlasSpace)?;
 
                         if !allocation.color.is_empty() {

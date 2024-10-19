@@ -1,19 +1,17 @@
 use std::collections::HashSet;
 
 use crate::atlas::Atlas;
-use crate::Color;
+use crate::{font, Color};
 
 pub struct TextSprites {
     pub color: Vec<spright::Sprite>,
     pub mask: Vec<spright::Sprite>,
 }
 
-pub struct Section<'a> {
-    pub contents: String,
+pub struct Section {
+    pub prepared: PreparedText,
     pub transform: spright::AffineTransform,
     pub color: Color,
-    pub metrics: cosmic_text::Metrics,
-    pub attrs: cosmic_text::Attrs<'a>,
 }
 
 pub struct SpriteMaker {
@@ -25,6 +23,8 @@ pub struct SpriteMaker {
     last_cache_keys: HashSet<cosmic_text::CacheKey>,
     cache_keys: HashSet<cosmic_text::CacheKey>,
 }
+
+pub struct PreparedText(cosmic_text::Buffer);
 
 impl SpriteMaker {
     pub fn new(device: &wgpu::Device) -> Self {
@@ -53,22 +53,31 @@ impl SpriteMaker {
         self.color_atlas.texture()
     }
 
-    pub fn create_buffer_from_section(&mut self, section: &Section) -> cosmic_text::Buffer {
-        let mut buffer = cosmic_text::Buffer::new(&mut self.font_system, section.metrics);
+    pub fn prepare(
+        &mut self,
+        contents: &str,
+        metrics: font::Metrics,
+        attrs: font::Attrs,
+    ) -> PreparedText {
+        let mut buffer = cosmic_text::Buffer::new(&mut self.font_system, metrics);
         buffer.set_text(
             &mut self.font_system,
-            &section.contents,
-            section.attrs,
+            contents,
+            cosmic_text::Attrs::new()
+                .family(attrs.family.as_family())
+                .stretch(attrs.stretch)
+                .style(attrs.style)
+                .weight(attrs.weight),
             cosmic_text::Shaping::Advanced,
         );
-        buffer
+        PreparedText(buffer)
     }
 
     pub fn make(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        buffer: &cosmic_text::Buffer,
+        prepared_text: &PreparedText,
         color: Color,
     ) -> Option<TextSprites> {
         let mut text_sprites = TextSprites {
@@ -76,7 +85,7 @@ impl SpriteMaker {
             mask: vec![],
         };
 
-        for run in buffer.layout_runs() {
+        for run in prepared_text.0.layout_runs() {
             for glyph in run.glyphs.iter() {
                 let physical_glyph = glyph.physical((0., 0.), 1.0);
                 let Some(image) = self
