@@ -84,6 +84,11 @@ impl<'a> TextureSlice<'a> {
             rect,
         })
     }
+
+    /// Gets the size of the texture slice.
+    pub fn size(&self) -> [u32; 2] {
+        [self.rect.width, self.rect.height]
+    }
 }
 
 impl<'a> Scene<'a> {
