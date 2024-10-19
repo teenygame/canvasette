@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use canvasette::{Renderer, Scene};
+use canvasette::{Renderer, Scene, TextureSlice};
 use wgpu::{
     Adapter, CreateSurfaceError, Device, DeviceDescriptor, PresentMode, Queue, Surface,
     SurfaceConfiguration,
@@ -86,15 +86,13 @@ impl Inner {
         let mut scene = Scene::default();
 
         scene.draw_sprite(
-            &self.texture2,
-            0.0,
-            0.0,
-            386.0,
-            395.0,
-            30.0,
-            30.0,
-            386.0 * 4.0,
-            395.0 * 4.0,
+            TextureSlice::from(&self.texture2)
+                .slice(0, 0, 300, 300)
+                .unwrap(),
+            30,
+            30,
+            386 * 4,
+            395 * 4,
         );
 
         {
@@ -115,17 +113,7 @@ impl Inner {
         }
         {
             let scene = scene.add_child(spright::AffineTransform::translation(200.0, 200.0));
-            scene.draw_sprite(
-                &self.texture1,
-                0.0,
-                0.0,
-                280.0,
-                210.0,
-                0.0,
-                0.0,
-                280.0,
-                210.0,
-            );
+            scene.draw_sprite(TextureSlice::from(&self.texture1), 0, 0, 280, 210);
         }
 
         let prepared = self
@@ -153,9 +141,7 @@ impl Inner {
         self.sprite1_x_pos += 1.0;
 
         let mut scene = Scene::default();
-        scene.draw_sprite(
-            &target, 0.0, 0.0, 1000.0, 1000.0, 10.0, 10.0, 1000.0, 1000.0,
-        );
+        scene.draw_sprite(TextureSlice::from(&target), 10, 10, 1000, 1000);
         let prepared = self
             .renderer
             .prepare(device, queue, texture.size(), &scene)

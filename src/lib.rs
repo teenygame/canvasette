@@ -28,7 +28,7 @@ enum Command<'a> {
 
 /// A representation of what is queued for rendering.
 pub struct Scene<'a> {
-    transform: spright::AffineTransform,
+    transform: AffineTransform,
     commands: Vec<Command<'a>>,
     children: Vec<Scene<'a>>,
 }
@@ -36,6 +36,53 @@ pub struct Scene<'a> {
 impl<'a> Default for Scene<'a> {
     fn default() -> Self {
         Self::new(AffineTransform::IDENTITY)
+    }
+}
+
+/// Represents a view into a texture.
+#[derive(Clone, Copy)]
+pub struct TextureSlice<'a> {
+    texture: &'a wgpu::Texture,
+    rect: spright::Rect,
+}
+
+impl<'a> From<&'a wgpu::Texture> for TextureSlice<'a> {
+    fn from(texture: &'a wgpu::Texture) -> Self {
+        let size = texture.size();
+        Self {
+            texture,
+            rect: spright::Rect {
+                x: 0,
+                y: 0,
+                width: size.width,
+                height: size.height,
+            },
+        }
+    }
+}
+
+impl<'a> TextureSlice<'a> {
+    /// Slices a texture.
+    pub fn slice(&self, x: i32, y: i32, width: u32, height: u32) -> Option<Self> {
+        let rect = spright::Rect {
+            x: self.rect.x + x,
+            y: self.rect.y + y,
+            width,
+            height,
+        };
+
+        if rect.left() < self.rect.left()
+            || rect.right() > self.rect.right()
+            || rect.top() < self.rect.top()
+            || rect.bottom() > self.rect.bottom()
+        {
+            return None;
+        }
+
+        Some(Self {
+            texture: self.texture,
+            rect,
+        })
     }
 }
 
@@ -57,42 +104,33 @@ impl<'a> Scene<'a> {
     /// Queues a sprite to be drawn.
     pub fn draw_sprite(
         &mut self,
-        texture: &'a wgpu::Texture,
-        sx: f32,
-        sy: f32,
-        swidth: f32,
-        sheight: f32,
-        x: f32,
-        y: f32,
-        width: f32,
-        height: f32,
+        texture_slice: TextureSlice<'a>,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
     ) {
         let sprite = spright::Sprite {
-            src: spright::Rect {
-                x: sx,
-                y: sy,
-                width: swidth,
-                height: sheight,
-            },
+            src: texture_slice.rect,
             dest_size: spright::Size { width, height },
-            transform: AffineTransform::translation(x, y),
+            transform: AffineTransform::translation(x as f32, y as f32),
             tint: spright::Color::new(0xff, 0xff, 0xff, 0xff),
         };
         if let Some(Command::Sprites(groups)) = self.commands.last_mut() {
             if let Some(group) = groups
                 .last_mut()
-                .filter(|g| g.texture.global_id() == texture.global_id())
+                .filter(|g| g.texture.global_id() == texture_slice.texture.global_id())
             {
                 group.sprites.push(sprite);
             } else {
                 groups.push(SpriteGroup {
-                    texture,
+                    texture: texture_slice.texture,
                     sprites: vec![sprite],
                 });
             }
         } else {
             self.commands.push(Command::Sprites(vec![SpriteGroup {
-                texture,
+                texture: texture_slice.texture,
                 sprites: vec![sprite],
             }]));
         }
