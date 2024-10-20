@@ -10,7 +10,7 @@ pub struct TextSprites {
 
 pub struct Section {
     pub prepared: PreparedText,
-    pub transform: spright::AffineTransform,
+    pub transform: spright::Transform,
     pub tint: Color,
 }
 
@@ -148,7 +148,7 @@ impl SpriteMaker {
                         width: allocation.rectangle.width() as u32,
                         height: allocation.rectangle.height() as u32,
                     },
-                    transform: spright::AffineTransform::translation(
+                    transform: spright::Transform::translation(
                         physical_glyph.x as f32 + image.placement.left as f32,
                         physical_glyph.y as f32 + run.line_top - image.placement.top as f32,
                     ),

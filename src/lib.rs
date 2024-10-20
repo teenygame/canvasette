@@ -9,7 +9,7 @@ mod text;
 /// 8-bit RGBA color.
 pub type Color = rgb::Rgba<u8>;
 
-pub use spright::AffineTransform;
+pub use spright::Transform;
 
 #[cfg(feature = "text")]
 pub use text::PreparedText;
@@ -89,7 +89,7 @@ where
     Self: Sized + Clone,
 {
     /// Called to draw the item to the canvas.
-    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform);
+    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: Transform);
 
     /// Adds a tint to the drawable.
     fn tinted(&self, tint: Color) -> impl Drawable<'a> {
@@ -102,7 +102,7 @@ where
 
 #[cfg(feature = "text")]
 impl<'a> Drawable<'a> for text::PreparedText {
-    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform) {
+    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: Transform) {
         let section = text::Section {
             prepared: self.clone(),
             transform,
@@ -117,7 +117,7 @@ impl<'a> Drawable<'a> for text::PreparedText {
 }
 
 impl<'a> Drawable<'a> for TextureSlice<'a> {
-    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform) {
+    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: Transform) {
         let sprite = spright::Sprite {
             src: self.rect,
             transform,
@@ -154,7 +154,7 @@ impl<'a, T> Drawable<'a> for Tinted<T>
 where
     T: Drawable<'a>,
 {
-    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform) {
+    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: Transform) {
         self.drawable.draw(
             canvas,
             Color::new(
@@ -175,14 +175,14 @@ impl<'a> Canvas<'a> {
 
     /// Draws an item with a tint.
     #[inline]
-    pub fn draw_with_transform(&mut self, drawable: impl Drawable<'a>, transform: AffineTransform) {
+    pub fn draw_with_transform(&mut self, drawable: impl Drawable<'a>, transform: Transform) {
         drawable.draw(self, Color::new(0xff, 0xff, 0xff, 0xff), transform);
     }
 
     /// Draws an item.
     #[inline]
     pub fn draw(&mut self, drawable: impl Drawable<'a>, x: f32, y: f32) {
-        self.draw_with_transform(drawable, AffineTransform::translation(x, y));
+        self.draw_with_transform(drawable, Transform::translation(x, y));
     }
 }
 

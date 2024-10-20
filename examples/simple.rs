@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use canvasette::{Canvas, Drawable as _, Renderer, TextureSlice};
-use spright::AffineTransform;
+use spright::Transform;
 use wgpu::{
     Adapter, CreateSurfaceError, Device, DeviceDescriptor, PresentMode, Queue, Surface,
     SurfaceConfiguration,
@@ -90,7 +90,7 @@ impl Inner {
             TextureSlice::from(&self.texture2)
                 .slice(0, 0, 300, 300)
                 .unwrap(),
-            AffineTransform::translation(30.0, 30.0) * AffineTransform::scaling(4.0, 4.0),
+            Transform::translation(30.0, 30.0) * Transform::scaling(4.0, 4.0),
         );
 
         canvas.draw_with_transform(
@@ -101,8 +101,8 @@ impl Inner {
                     canvasette::font::Attrs::default(),
                 )
                 .tinted(canvasette::Color::new(0xff, 0xff, 0x00, 0xff)),
-            spright::AffineTransform::translation(2.0, 1.0)
-                * spright::AffineTransform::rotation(self.sprite1_x_pos * 0.01),
+            spright::Transform::translation(2.0, 1.0)
+                * spright::Transform::rotation(self.sprite1_x_pos * 0.01),
         );
         canvas.draw(TextureSlice::from(&self.texture1), 0.0, 0.0);
 
