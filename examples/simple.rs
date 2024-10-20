@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use canvasette::{Renderer, Scene, TextureSlice};
+use canvasette::{Color, Renderer, Scene, TextureSlice};
 use spright::AffineTransform;
 use wgpu::{
     Adapter, CreateSurfaceError, Device, DeviceDescriptor, PresentMode, Queue, Surface,
@@ -90,6 +90,7 @@ impl Inner {
             TextureSlice::from(&self.texture2)
                 .slice(0, 0, 300, 300)
                 .unwrap(),
+            Color::new(0xff, 0xff, 0xff, 0xff),
             AffineTransform::translation(30.0, 30.0) * AffineTransform::scaling(4.0, 4.0),
         );
 
@@ -105,6 +106,7 @@ impl Inner {
         );
         scene.draw_sprite(
             TextureSlice::from(&self.texture1),
+            Color::new(0xff, 0xff, 0xff, 0xff),
             AffineTransform::IDENTITY,
         );
 
@@ -135,6 +137,7 @@ impl Inner {
         let mut scene = Scene::new();
         scene.draw_sprite(
             TextureSlice::from(&target),
+            Color::new(0xff, 0xff, 0xff, 0xff),
             AffineTransform::translation(100.0, 100.0),
         );
         let prepared = self

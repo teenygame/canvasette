@@ -89,11 +89,16 @@ impl<'a> Scene<'a> {
     }
 
     /// Queues a sprite to be drawn.
-    pub fn draw_sprite(&mut self, texture_slice: TextureSlice<'a>, transform: AffineTransform) {
+    pub fn draw_sprite(
+        &mut self,
+        texture_slice: TextureSlice<'a>,
+        color: Color,
+        transform: AffineTransform,
+    ) {
         let sprite = spright::Sprite {
             src: texture_slice.rect,
             transform,
-            tint: spright::Color::new(0xff, 0xff, 0xff, 0xff),
+            tint: color,
         };
         if let Some(Command::Sprites(groups)) = self.commands.last_mut() {
             if let Some(group) = groups
