@@ -83,62 +83,105 @@ impl<'a> TextureSlice<'a> {
     }
 }
 
+/// Things that can be drawn.
+pub trait Drawable<'a> {
+    /// Called to draw the item to the canvas.
+    fn draw(self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform);
+
+    /// Adds a tint to the drawable.
+    fn tinted(self, tint: Color) -> impl Drawable<'a>
+    where
+        Self: Sized,
+    {
+        Tinted {
+            drawable: self,
+            tint,
+        }
+    }
+}
+
+#[cfg(feature = "text")]
+impl<'a> Drawable<'a> for text::PreparedText {
+    fn draw(self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform) {
+        let section = text::Section {
+            prepared: self,
+            transform,
+            tint,
+        };
+        if let Some(Command::Text(sections)) = canvas.commands.last_mut() {
+            sections.push(section);
+        } else {
+            canvas.commands.push(Command::Text(vec![section]));
+        }
+    }
+}
+
+impl<'a> Drawable<'a> for TextureSlice<'a> {
+    fn draw(self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform) {
+        let sprite = spright::Sprite {
+            src: self.rect,
+            transform,
+            tint,
+        };
+        if let Some(Command::Sprites(groups)) = canvas.commands.last_mut() {
+            if let Some(group) = groups
+                .last_mut()
+                .filter(|g| g.texture.global_id() == self.texture.global_id())
+            {
+                group.sprites.push(sprite);
+            } else {
+                groups.push(SpriteGroup {
+                    texture: self.texture,
+                    sprites: vec![sprite],
+                });
+            }
+        } else {
+            canvas.commands.push(Command::Sprites(vec![SpriteGroup {
+                texture: self.texture,
+                sprites: vec![sprite],
+            }]));
+        }
+    }
+}
+
+struct Tinted<T> {
+    drawable: T,
+    tint: Color,
+}
+
+impl<'a, T> Drawable<'a> for Tinted<T>
+where
+    T: Drawable<'a>,
+{
+    fn draw(self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform) {
+        self.drawable.draw(
+            canvas,
+            Color::new(
+                ((tint.r as u16 * self.tint.r as u16) / 0xff) as u8,
+                ((tint.g as u16 * self.tint.g as u16) / 0xff) as u8,
+                ((tint.b as u16 * self.tint.b as u16) / 0xff) as u8,
+                ((tint.a as u16 * self.tint.a as u16) / 0xff) as u8,
+            ),
+            transform,
+        );
+    }
+}
+
 impl<'a> Canvas<'a> {
     pub fn new() -> Self {
         Self { commands: vec![] }
     }
 
-    /// Queues a sprite to be drawn.
-    pub fn draw_sprite(
-        &mut self,
-        texture_slice: TextureSlice<'a>,
-        color: Color,
-        transform: AffineTransform,
-    ) {
-        let sprite = spright::Sprite {
-            src: texture_slice.rect,
-            transform,
-            tint: color,
-        };
-        if let Some(Command::Sprites(groups)) = self.commands.last_mut() {
-            if let Some(group) = groups
-                .last_mut()
-                .filter(|g| g.texture.global_id() == texture_slice.texture.global_id())
-            {
-                group.sprites.push(sprite);
-            } else {
-                groups.push(SpriteGroup {
-                    texture: texture_slice.texture,
-                    sprites: vec![sprite],
-                });
-            }
-        } else {
-            self.commands.push(Command::Sprites(vec![SpriteGroup {
-                texture: texture_slice.texture,
-                sprites: vec![sprite],
-            }]));
-        }
+    /// Draws an item with a tint.
+    #[inline]
+    pub fn draw_with_transform(&mut self, drawable: impl Drawable<'a>, transform: AffineTransform) {
+        drawable.draw(self, Color::new(0xff, 0xff, 0xff, 0xff), transform);
     }
 
-    /// Queues text to be drawn.
-    #[cfg(feature = "text")]
-    pub fn draw_text(
-        &mut self,
-        prepared: text::PreparedText,
-        color: Color,
-        transform: AffineTransform,
-    ) {
-        let section = text::Section {
-            prepared,
-            transform,
-            color,
-        };
-
-        if let Some(Command::Text(sections)) = self.commands.last_mut() {
-            sections.push(section);
-        } else {
-            self.commands.push(Command::Text(vec![section]));
-        }
+    /// Draws an item.
+    #[inline]
+    pub fn draw(&mut self, drawable: impl Drawable<'a>, x: f32, y: f32) {
+        self.draw_with_transform(drawable, AffineTransform::translation(x, y));
     }
 }
 
@@ -229,7 +272,7 @@ impl Renderer {
                     for section in sections {
                         let allocation = self
                             .text_sprite_maker
-                            .make(device, queue, &section.prepared, section.color)
+                            .make(device, queue, &section.prepared, section.tint)
                             .ok_or(Error::OutOfGlyphAtlasSpace)?;
 
                         if !allocation.color.is_empty() {

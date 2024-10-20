@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use canvasette::{Canvas, Color, Renderer, TextureSlice};
+use canvasette::{Canvas, Drawable as _, Renderer, TextureSlice};
 use spright::AffineTransform;
 use wgpu::{
     Adapter, CreateSurfaceError, Device, DeviceDescriptor, PresentMode, Queue, Surface,
@@ -86,29 +86,25 @@ impl Inner {
 
         let mut canvas = Canvas::new();
 
-        canvas.draw_sprite(
+        canvas.draw_with_transform(
             TextureSlice::from(&self.texture2)
                 .slice(0, 0, 300, 300)
                 .unwrap(),
-            Color::new(0xff, 0xff, 0xff, 0xff),
             AffineTransform::translation(30.0, 30.0) * AffineTransform::scaling(4.0, 4.0),
         );
 
-        canvas.draw_text(
-            self.renderer.prepare_text(
-                format!("HELLO WORLD {}", self.sprite1_x_pos),
-                canvasette::font::Metrics::relative(200.0, 1.0),
-                canvasette::font::Attrs::default(),
-            ),
-            canvasette::Color::new(0xff, 0xff, 0x00, 0xff),
+        canvas.draw_with_transform(
+            self.renderer
+                .prepare_text(
+                    format!("HELLO WORLD {}", self.sprite1_x_pos),
+                    canvasette::font::Metrics::relative(200.0, 1.0),
+                    canvasette::font::Attrs::default(),
+                )
+                .tinted(canvasette::Color::new(0xff, 0xff, 0x00, 0xff)),
             spright::AffineTransform::translation(2.0, 1.0)
                 * spright::AffineTransform::rotation(self.sprite1_x_pos * 0.01),
         );
-        canvas.draw_sprite(
-            TextureSlice::from(&self.texture1),
-            Color::new(0xff, 0xff, 0xff, 0xff),
-            AffineTransform::IDENTITY,
-        );
+        canvas.draw(TextureSlice::from(&self.texture1), 0.0, 0.0);
 
         let prepared = self
             .renderer
@@ -135,11 +131,7 @@ impl Inner {
         self.sprite1_x_pos += 1.0;
 
         let mut scene = Canvas::new();
-        scene.draw_sprite(
-            TextureSlice::from(&target),
-            Color::new(0xff, 0xff, 0xff, 0xff),
-            AffineTransform::translation(100.0, 100.0),
-        );
+        scene.draw(TextureSlice::from(&target), 100.0, 100.0);
         let prepared = self
             .renderer
             .prepare(device, queue, texture.size(), &scene)

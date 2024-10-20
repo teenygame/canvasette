@@ -11,7 +11,7 @@ pub struct TextSprites {
 pub struct Section {
     pub prepared: PreparedText,
     pub transform: spright::AffineTransform,
-    pub color: Color,
+    pub tint: Color,
 }
 
 pub struct SpriteMaker {
@@ -25,6 +25,7 @@ pub struct SpriteMaker {
 }
 
 /// Text that has been laid out and shaped.
+#[derive(Clone)]
 pub struct PreparedText(cosmic_text::Buffer);
 
 impl PreparedText {
