@@ -226,7 +226,7 @@ dependencies = [
 
 [[package]]
 name = "canvasette"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "cosmic-text",
  "etagere",
@@ -1690,9 +1690,9 @@ dependencies = [
 
 [[package]]
 name = "spright"
-version = "0.9.0"
+version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ed32db875f45f00db85ee230d4844f11f0f9033cd0637d3f0bb2962fe2ef8217"
+checksum = "1767050ee075667cd091dd3d26fe2eebbe8727aee25093453e73a3ccb6b24a7f"
 dependencies = [
  "bytemuck",
  "image",
