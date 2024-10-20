@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use canvasette::{Renderer, Scene, TextureSlice};
+use spright::AffineTransform;
 use wgpu::{
     Adapter, CreateSurfaceError, Device, DeviceDescriptor, PresentMode, Queue, Surface,
     SurfaceConfiguration,
@@ -83,38 +84,29 @@ impl Inner {
             view_formats: &[],
         });
 
-        let mut scene = Scene::default();
+        let mut scene = Scene::new();
 
         scene.draw_sprite(
             TextureSlice::from(&self.texture2)
                 .slice(0, 0, 300, 300)
                 .unwrap(),
-            30,
-            30,
-            386 * 4,
-            395 * 4,
+            AffineTransform::translation(30.0, 30.0) * AffineTransform::scaling(4.0, 4.0),
         );
 
-        {
-            let scene = scene.add_child(
-                spright::AffineTransform::translation(2.0, 1.0)
-                    * spright::AffineTransform::rotation(self.sprite1_x_pos * 0.01),
-            );
-            scene.draw_text(
-                self.renderer.prepare_text(
-                    format!("HELLO WORLD {}", self.sprite1_x_pos),
-                    canvasette::font::Metrics::relative(200.0, 1.0),
-                    canvasette::font::Attrs::default(),
-                ),
-                10.0,
-                100.0,
-                canvasette::Color::new(0xff, 0xff, 0x00, 0xff),
-            );
-        }
-        {
-            let scene = scene.add_child(spright::AffineTransform::translation(200.0, 200.0));
-            scene.draw_sprite(TextureSlice::from(&self.texture1), 0, 0, 280, 210);
-        }
+        scene.draw_text(
+            self.renderer.prepare_text(
+                format!("HELLO WORLD {}", self.sprite1_x_pos),
+                canvasette::font::Metrics::relative(200.0, 1.0),
+                canvasette::font::Attrs::default(),
+            ),
+            canvasette::Color::new(0xff, 0xff, 0x00, 0xff),
+            spright::AffineTransform::translation(2.0, 1.0)
+                * spright::AffineTransform::rotation(self.sprite1_x_pos * 0.01),
+        );
+        scene.draw_sprite(
+            TextureSlice::from(&self.texture1),
+            AffineTransform::IDENTITY,
+        );
 
         let prepared = self
             .renderer
@@ -140,8 +132,11 @@ impl Inner {
 
         self.sprite1_x_pos += 1.0;
 
-        let mut scene = Scene::default();
-        scene.draw_sprite(TextureSlice::from(&target), 10, 10, 1000, 1000);
+        let mut scene = Scene::new();
+        scene.draw_sprite(
+            TextureSlice::from(&target),
+            AffineTransform::translation(100.0, 100.0),
+        );
         let prepared = self
             .renderer
             .prepare(device, queue, texture.size(), &scene)

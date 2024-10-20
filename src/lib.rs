@@ -28,15 +28,7 @@ enum Command<'a> {
 
 /// A representation of what is queued for rendering.
 pub struct Scene<'a> {
-    transform: AffineTransform,
     commands: Vec<Command<'a>>,
-    children: Vec<Scene<'a>>,
-}
-
-impl<'a> Default for Scene<'a> {
-    fn default() -> Self {
-        Self::new(AffineTransform::IDENTITY)
-    }
 }
 
 /// Represents a view into a texture.
@@ -92,33 +84,15 @@ impl<'a> TextureSlice<'a> {
 }
 
 impl<'a> Scene<'a> {
-    fn new(transform: AffineTransform) -> Self {
-        Self {
-            transform,
-            commands: vec![],
-            children: vec![],
-        }
-    }
-
-    /// Adds a child scene, inheriting the transform of its parent.
-    pub fn add_child(&mut self, transform: AffineTransform) -> &mut Scene<'a> {
-        self.children.push(Scene::new(transform));
-        self.children.last_mut().unwrap()
+    pub fn new() -> Self {
+        Self { commands: vec![] }
     }
 
     /// Queues a sprite to be drawn.
-    pub fn draw_sprite(
-        &mut self,
-        texture_slice: TextureSlice<'a>,
-        x: i32,
-        y: i32,
-        width: u32,
-        height: u32,
-    ) {
+    pub fn draw_sprite(&mut self, texture_slice: TextureSlice<'a>, transform: AffineTransform) {
         let sprite = spright::Sprite {
             src: texture_slice.rect,
-            dest_size: spright::Size { width, height },
-            transform: AffineTransform::translation(x as f32, y as f32),
+            transform,
             tint: spright::Color::new(0xff, 0xff, 0xff, 0xff),
         };
         if let Some(Command::Sprites(groups)) = self.commands.last_mut() {
@@ -143,10 +117,15 @@ impl<'a> Scene<'a> {
 
     /// Queues text to be drawn.
     #[cfg(feature = "text")]
-    pub fn draw_text(&mut self, prepared: text::PreparedText, x: f32, y: f32, color: Color) {
+    pub fn draw_text(
+        &mut self,
+        prepared: text::PreparedText,
+        color: Color,
+        transform: AffineTransform,
+    ) {
         let section = text::Section {
             prepared,
-            transform: spright::AffineTransform::translation(x, y),
+            transform,
             color,
         };
 
@@ -213,16 +192,15 @@ impl Renderer {
             .prepare(contents.as_ref(), metrics, attrs)
     }
 
-    fn flatten_and_stage_scene<'a>(
+    /// Prepares a scene for rendering.
+    pub fn prepare(
         &mut self,
-        scene: &'a Scene,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        parent_transform: spright::AffineTransform,
-    ) -> Result<Vec<StagedGroup<'a>>, Error> {
+        target_size: wgpu::Extent3d,
+        scene: &Scene,
+    ) -> Result<Prepared, Error> {
         let mut groups = vec![];
-
-        let transform = scene.transform * parent_transform;
 
         for command in scene.commands.iter() {
             match command {
@@ -233,7 +211,7 @@ impl Renderer {
                                 .sprites
                                 .into_iter()
                                 .map(|sprite| spright::Sprite {
-                                    transform: sprite.transform * transform,
+                                    transform: sprite.transform,
                                     ..sprite
                                 })
                                 .collect(),
@@ -244,8 +222,6 @@ impl Renderer {
                 #[cfg(feature = "text")]
                 Command::Text(sections) => {
                     for section in sections {
-                        let transform = section.transform * transform;
-
                         let allocation = self
                             .text_sprite_maker
                             .make(device, queue, &section.prepared, section.color)
@@ -258,7 +234,7 @@ impl Renderer {
                                     .color
                                     .into_iter()
                                     .map(|sprite| spright::Sprite {
-                                        transform: sprite.transform * transform,
+                                        transform: sprite.transform * section.transform,
                                         ..sprite
                                     })
                                     .collect(),
@@ -272,7 +248,7 @@ impl Renderer {
                                     .mask
                                     .into_iter()
                                     .map(|sprite| spright::Sprite {
-                                        transform: sprite.transform * transform,
+                                        transform: sprite.transform * section.transform,
                                         ..sprite
                                     })
                                     .collect(),
@@ -282,24 +258,6 @@ impl Renderer {
                 }
             }
         }
-
-        for child in scene.children.iter() {
-            groups.extend(self.flatten_and_stage_scene(child, device, queue, transform)?);
-        }
-
-        Ok(groups)
-    }
-
-    /// Prepares a scene for rendering.
-    pub fn prepare(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        target_size: wgpu::Extent3d,
-        scene: &Scene,
-    ) -> Result<Prepared, Error> {
-        let groups =
-            self.flatten_and_stage_scene(scene, device, queue, spright::AffineTransform::IDENTITY)?;
 
         #[cfg(feature = "text")]
         self.text_sprite_maker.flush(queue);

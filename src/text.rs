@@ -147,10 +147,6 @@ impl SpriteMaker {
                         width: allocation.rectangle.width() as u32,
                         height: allocation.rectangle.height() as u32,
                     },
-                    dest_size: spright::Size {
-                        width: allocation.rectangle.width() as u32,
-                        height: allocation.rectangle.height() as u32,
-                    },
                     transform: spright::AffineTransform::translation(
                         physical_glyph.x as f32 + image.placement.left as f32,
                         physical_glyph.y as f32 + run.line_top - image.placement.top as f32,
