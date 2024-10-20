@@ -84,17 +84,17 @@ impl<'a> TextureSlice<'a> {
 }
 
 /// Things that can be drawn.
-pub trait Drawable<'a> {
+pub trait Drawable<'a>
+where
+    Self: Sized + Clone,
+{
     /// Called to draw the item to the canvas.
-    fn draw(self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform);
+    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform);
 
     /// Adds a tint to the drawable.
-    fn tinted(self, tint: Color) -> impl Drawable<'a>
-    where
-        Self: Sized,
-    {
+    fn tinted(&self, tint: Color) -> impl Drawable<'a> {
         Tinted {
-            drawable: self,
+            drawable: self.clone(),
             tint,
         }
     }
@@ -102,9 +102,9 @@ pub trait Drawable<'a> {
 
 #[cfg(feature = "text")]
 impl<'a> Drawable<'a> for text::PreparedText {
-    fn draw(self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform) {
+    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform) {
         let section = text::Section {
-            prepared: self,
+            prepared: self.clone(),
             transform,
             tint,
         };
@@ -117,7 +117,7 @@ impl<'a> Drawable<'a> for text::PreparedText {
 }
 
 impl<'a> Drawable<'a> for TextureSlice<'a> {
-    fn draw(self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform) {
+    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform) {
         let sprite = spright::Sprite {
             src: self.rect,
             transform,
@@ -144,6 +144,7 @@ impl<'a> Drawable<'a> for TextureSlice<'a> {
     }
 }
 
+#[derive(Clone)]
 struct Tinted<T> {
     drawable: T,
     tint: Color,
@@ -153,7 +154,7 @@ impl<'a, T> Drawable<'a> for Tinted<T>
 where
     T: Drawable<'a>,
 {
-    fn draw(self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform) {
+    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: AffineTransform) {
         self.drawable.draw(
             canvas,
             Color::new(
