@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use canvasette::{Color, Renderer, Scene, TextureSlice};
+use canvasette::{Canvas, Color, Renderer, TextureSlice};
 use spright::AffineTransform;
 use wgpu::{
     Adapter, CreateSurfaceError, Device, DeviceDescriptor, PresentMode, Queue, Surface,
@@ -84,9 +84,9 @@ impl Inner {
             view_formats: &[],
         });
 
-        let mut scene = Scene::new();
+        let mut canvas = Canvas::new();
 
-        scene.draw_sprite(
+        canvas.draw_sprite(
             TextureSlice::from(&self.texture2)
                 .slice(0, 0, 300, 300)
                 .unwrap(),
@@ -94,7 +94,7 @@ impl Inner {
             AffineTransform::translation(30.0, 30.0) * AffineTransform::scaling(4.0, 4.0),
         );
 
-        scene.draw_text(
+        canvas.draw_text(
             self.renderer.prepare_text(
                 format!("HELLO WORLD {}", self.sprite1_x_pos),
                 canvasette::font::Metrics::relative(200.0, 1.0),
@@ -104,7 +104,7 @@ impl Inner {
             spright::AffineTransform::translation(2.0, 1.0)
                 * spright::AffineTransform::rotation(self.sprite1_x_pos * 0.01),
         );
-        scene.draw_sprite(
+        canvas.draw_sprite(
             TextureSlice::from(&self.texture1),
             Color::new(0xff, 0xff, 0xff, 0xff),
             AffineTransform::IDENTITY,
@@ -112,7 +112,7 @@ impl Inner {
 
         let prepared = self
             .renderer
-            .prepare(device, queue, target.size(), &scene)
+            .prepare(device, queue, target.size(), &canvas)
             .unwrap();
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -134,7 +134,7 @@ impl Inner {
 
         self.sprite1_x_pos += 1.0;
 
-        let mut scene = Scene::new();
+        let mut scene = Canvas::new();
         scene.draw_sprite(
             TextureSlice::from(&target),
             Color::new(0xff, 0xff, 0xff, 0xff),

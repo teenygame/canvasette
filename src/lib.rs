@@ -27,7 +27,7 @@ enum Command<'a> {
 }
 
 /// A representation of what is queued for rendering.
-pub struct Scene<'a> {
+pub struct Canvas<'a> {
     commands: Vec<Command<'a>>,
 }
 
@@ -83,7 +83,7 @@ impl<'a> TextureSlice<'a> {
     }
 }
 
-impl<'a> Scene<'a> {
+impl<'a> Canvas<'a> {
     pub fn new() -> Self {
         Self { commands: vec![] }
     }
@@ -203,11 +203,11 @@ impl Renderer {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         target_size: wgpu::Extent3d,
-        scene: &Scene,
+        canvas: &Canvas,
     ) -> Result<Prepared, Error> {
         let mut groups = vec![];
 
-        for command in scene.commands.iter() {
+        for command in canvas.commands.iter() {
             match command {
                 Command::Sprites(g) => {
                     groups.extend(g.iter().cloned().map(|g| {
