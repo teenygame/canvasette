@@ -1,55 +1,70 @@
 use std::{collections::HashMap, hash::Hash};
 
-pub struct Atlas<K> {
+use imgref::ImgRef;
+
+pub struct Atlas<K, Pixel> {
     texture: wgpu::Texture,
     allocator: etagere::AtlasAllocator,
     allocations: HashMap<K, etagere::AllocId>,
+    _phantom: std::marker::PhantomData<Pixel>,
 }
 
-impl<K> Atlas<K>
+pub trait HasTextureFormat {
+    fn texture_format() -> wgpu::TextureFormat;
+}
+
+impl HasTextureFormat for rgb::Rgba<u8> {
+    fn texture_format() -> wgpu::TextureFormat {
+        wgpu::TextureFormat::Rgba8UnormSrgb
+    }
+}
+
+impl HasTextureFormat for u8 {
+    fn texture_format() -> wgpu::TextureFormat {
+        wgpu::TextureFormat::R8Unorm
+    }
+}
+
+impl<K, Pixel> Atlas<K, Pixel>
 where
     K: std::cmp::Eq + Hash + Clone + Copy,
+    Pixel: Clone + bytemuck::NoUninit + HasTextureFormat,
 {
-    const INITIAL_SIZE: [u32; 2] = [1024, 1024];
+    const INITIAL_SIZE: wgpu::Extent3d = wgpu::Extent3d {
+        width: 1024,
+        height: 1024,
+        depth_or_array_layers: 1,
+    };
 
-    pub fn new(device: &wgpu::Device, texture_format: wgpu::TextureFormat) -> Self {
-        Self::new_with_initial_size(device, texture_format, Self::INITIAL_SIZE)
+    pub fn new(device: &wgpu::Device) -> Self {
+        Self::new_with_initial_size(device, Self::INITIAL_SIZE)
     }
 
-    pub fn new_with_initial_size(
-        device: &wgpu::Device,
-        texture_format: wgpu::TextureFormat,
-        [width, height]: [u32; 2],
-    ) -> Self {
+    pub fn new_with_initial_size(device: &wgpu::Device, size: wgpu::Extent3d) -> Self {
         Self {
             texture: device.create_texture(&wgpu::TextureDescriptor {
                 label: Some("canvasette: Atlas"),
-                size: wgpu::Extent3d {
-                    width,
-                    height,
-                    depth_or_array_layers: 1,
-                },
+                size,
                 mip_level_count: 1,
                 sample_count: 1,
                 dimension: wgpu::TextureDimension::D2,
-                format: texture_format,
+                format: Pixel::texture_format(),
                 usage: wgpu::TextureUsages::TEXTURE_BINDING
                     | wgpu::TextureUsages::COPY_DST
                     | wgpu::TextureUsages::COPY_SRC,
                 view_formats: &[],
             }),
-            allocator: etagere::AtlasAllocator::new(etagere::size2(width as i32, height as i32)),
+            allocator: etagere::AtlasAllocator::new(etagere::size2(
+                size.width as i32,
+                size.height as i32,
+            )),
             allocations: HashMap::new(),
+            _phantom: std::marker::PhantomData,
         }
     }
 
-    fn resize(
-        &mut self,
-        device: &wgpu::Device,
-        queue: &wgpu::Queue,
-        [width, height]: [u32; 2],
-    ) -> bool {
-        let mut atlas = Self::new_with_initial_size(device, self.texture.format(), [width, height]);
+    fn resize(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, size: wgpu::Extent3d) -> bool {
+        let mut atlas = Self::new_with_initial_size(device, size);
 
         let mut enc = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("canvasette: Atlas::resize"),
@@ -94,25 +109,34 @@ where
         true
     }
 
+    pub fn get(&self, key: K) -> Option<etagere::Allocation> {
+        let id = *self.allocations.get(&key)?;
+        Some(etagere::Allocation {
+            id,
+            rectangle: self.allocator.get(id),
+        })
+    }
+
     pub fn add(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         key: K,
-        data: &[u8],
-        [width, height]: [u32; 2],
+        img: ImgRef<Pixel>,
     ) -> Option<etagere::Allocation> {
         loop {
-            if let Some(allocation) =
-                self.try_add_without_resizing(queue, key, data, [width, height])
-            {
+            if let Some(allocation) = self.try_add_without_resizing(queue, key, img) {
                 return Some(allocation);
             }
             let size = self.allocator.size();
             assert!(self.resize(
                 device,
                 queue,
-                [size.width as u32 * 2, size.height as u32 * 2]
+                wgpu::Extent3d {
+                    width: size.width as u32 * 2,
+                    height: size.height as u32 * 2,
+                    depth_or_array_layers: 1
+                }
             ));
         }
     }
@@ -121,52 +145,41 @@ where
         &mut self,
         queue: &wgpu::Queue,
         key: K,
-        data: &[u8],
-        [width, height]: [u32; 2],
+        img: ImgRef<Pixel>,
     ) -> Option<etagere::Allocation> {
-        match self.allocations.entry(key) {
-            std::collections::hash_map::Entry::Occupied(e) => {
-                let id = *e.get();
-                Some(etagere::Allocation {
-                    id,
-                    rectangle: self.allocator.get(id),
-                })
-            }
+        let (buf, width, height) = img.to_contiguous_buf();
 
-            std::collections::hash_map::Entry::Vacant(e) => {
-                let allocation = self
-                    .allocator
-                    .allocate(etagere::size2(width as i32, height as i32))?;
+        let allocation = self
+            .allocator
+            .allocate(etagere::size2(width as i32, height as i32))?;
 
-                queue.write_texture(
-                    wgpu::ImageCopyTexture {
-                        texture: &self.texture,
-                        mip_level: 0,
-                        origin: wgpu::Origin3d {
-                            x: allocation.rectangle.min.x as u32,
-                            y: allocation.rectangle.min.y as u32,
-                            z: 0,
-                        },
-                        aspect: wgpu::TextureAspect::All,
-                    },
-                    data,
-                    wgpu::ImageDataLayout {
-                        offset: 0,
-                        bytes_per_row: Some(width * self.texture.format().components() as u32),
-                        rows_per_image: None,
-                    },
-                    wgpu::Extent3d {
-                        width,
-                        height,
-                        depth_or_array_layers: 1,
-                    },
-                );
+        queue.write_texture(
+            wgpu::ImageCopyTexture {
+                texture: &self.texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d {
+                    x: allocation.rectangle.min.x as u32,
+                    y: allocation.rectangle.min.y as u32,
+                    z: 0,
+                },
+                aspect: wgpu::TextureAspect::All,
+            },
+            bytemuck::cast_slice(&buf),
+            wgpu::ImageDataLayout {
+                offset: 0,
+                bytes_per_row: Some(img.width() as u32 * self.texture.format().components() as u32),
+                rows_per_image: None,
+            },
+            wgpu::Extent3d {
+                width: width as u32,
+                height: height as u32,
+                depth_or_array_layers: 1,
+            },
+        );
 
-                e.insert(allocation.id);
+        self.allocations.insert(key, allocation.id);
 
-                Some(allocation)
-            }
-        }
+        Some(allocation)
     }
 
     pub fn remove(&mut self, queue: &wgpu::Queue, key: &K) {

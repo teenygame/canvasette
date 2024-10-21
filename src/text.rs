@@ -1,5 +1,7 @@
 use std::collections::HashSet;
 
+use imgref::ImgRef;
+
 use crate::atlas::Atlas;
 use crate::{font, Color};
 
@@ -17,8 +19,8 @@ pub struct Section {
 pub struct SpriteMaker {
     font_system: cosmic_text::FontSystem,
     swash_cache: cosmic_text::SwashCache,
-    mask_atlas: Atlas<cosmic_text::CacheKey>,
-    color_atlas: Atlas<cosmic_text::CacheKey>,
+    mask_atlas: Atlas<cosmic_text::CacheKey, u8>,
+    color_atlas: Atlas<cosmic_text::CacheKey, rgb::Rgba<u8>>,
 
     last_cache_keys: HashSet<cosmic_text::CacheKey>,
     cache_keys: HashSet<cosmic_text::CacheKey>,
@@ -30,14 +32,13 @@ pub struct PreparedText(cosmic_text::Buffer);
 
 impl PreparedText {
     /// Computes the bounding box of the text.
-    pub fn bounding_box(&self) -> [f32; 2] {
-        let mut width = 0.0f32;
-        let mut height = 0.0f32;
+    pub fn bounding_box(&self) -> glam::Vec2 {
+        let mut size = glam::Vec2::ZERO;
         for run in self.0.layout_runs() {
-            width = width.max(run.line_w);
-            height = run.line_top + run.line_height;
+            size.x = size.x.max(run.line_w);
+            size.y = run.line_top + run.line_height;
         }
-        [width, height]
+        size
     }
 }
 
@@ -49,8 +50,8 @@ impl SpriteMaker {
                 cosmic_text::fontdb::Database::new(),
             ),
             swash_cache: cosmic_text::SwashCache::new(),
-            mask_atlas: Atlas::new(device, wgpu::TextureFormat::R8Unorm),
-            color_atlas: Atlas::new(device, wgpu::TextureFormat::Rgba8UnormSrgb),
+            mask_atlas: Atlas::new(device),
+            color_atlas: Atlas::new(device),
             last_cache_keys: HashSet::new(),
             cache_keys: HashSet::new(),
         }
@@ -117,10 +118,23 @@ impl SpriteMaker {
                     continue;
                 }
 
-                let (sprites, atlas, tint) = match image.content {
+                let (sprites, allocation, tint) = match image.content {
                     cosmic_text::SwashContent::Mask | cosmic_text::SwashContent::SubpixelMask => (
                         &mut text_sprites.mask,
-                        &mut self.mask_atlas,
+                        if let Some(allocation) = self.mask_atlas.get(physical_glyph.cache_key) {
+                            allocation
+                        } else {
+                            self.mask_atlas.add(
+                                device,
+                                queue,
+                                physical_glyph.cache_key,
+                                ImgRef::new(
+                                    bytemuck::cast_slice(&image.data),
+                                    image.placement.width as usize,
+                                    image.placement.height as usize,
+                                ),
+                            )?
+                        },
                         glyph
                             .color_opt
                             .map(|v| Color::new(v.r(), v.g(), v.b(), v.a()))
@@ -128,18 +142,23 @@ impl SpriteMaker {
                     ),
                     cosmic_text::SwashContent::Color => (
                         &mut text_sprites.color,
-                        &mut self.color_atlas,
-                        spright::Color::new(0xff, 0xff, 0xff, 0xff),
+                        if let Some(allocation) = self.color_atlas.get(physical_glyph.cache_key) {
+                            allocation
+                        } else {
+                            self.color_atlas.add(
+                                device,
+                                queue,
+                                physical_glyph.cache_key,
+                                ImgRef::new(
+                                    bytemuck::cast_slice(&image.data),
+                                    image.placement.width as usize,
+                                    image.placement.height as usize,
+                                ),
+                            )?
+                        },
+                        Color::new(0xff, 0xff, 0xff, 0xff),
                     ),
                 };
-
-                let allocation = atlas.add(
-                    device,
-                    queue,
-                    physical_glyph.cache_key,
-                    &image.data,
-                    [image.placement.width, image.placement.height],
-                )?;
 
                 sprites.push(spright::Sprite {
                     src: spright::Rect {

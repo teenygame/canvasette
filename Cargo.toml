@@ -19,6 +19,8 @@ rgb = "0.8.50"
 thiserror = "1"
 sys-locale = "0.3.1"
 glam = "0.29.0"
+imgref = "1.11.0"
+bytemuck = "1.19.0"
 
 [dev-dependencies]
 winit = "0.30"
