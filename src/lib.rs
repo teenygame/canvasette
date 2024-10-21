@@ -26,9 +26,25 @@ enum Command<'a> {
     Text(Vec<text::Section>),
 }
 
-/// A representation of what is queued for rendering.
+/// A canvas for drawing onto.
 pub struct Canvas<'a> {
     commands: Vec<Command<'a>>,
+}
+
+/// A texture that can be rendered.
+pub struct Texture(wgpu::Texture);
+
+impl Texture {
+    /// Gets the size of the texture.
+    pub fn size(&self) -> [u32; 2] {
+        [self.0.width(), self.0.height()]
+    }
+}
+
+impl From<wgpu::Texture> for Texture {
+    fn from(texture: wgpu::Texture) -> Self {
+        Self(texture)
+    }
 }
 
 /// Represents a view into a texture.
@@ -36,6 +52,12 @@ pub struct Canvas<'a> {
 pub struct TextureSlice<'a> {
     texture: &'a wgpu::Texture,
     rect: spright::Rect,
+}
+
+impl<'a> From<&'a Texture> for TextureSlice<'a> {
+    fn from(texture: &'a Texture) -> Self {
+        Self::from(&texture.0)
+    }
 }
 
 impl<'a> From<&'a wgpu::Texture> for TextureSlice<'a> {
@@ -173,7 +195,7 @@ impl<'a> Canvas<'a> {
         Self { commands: vec![] }
     }
 
-    /// Draws an item with a tint.
+    /// Draws an item with the given transformation matrix.
     #[inline]
     pub fn draw_with_transform(&mut self, drawable: impl Drawable<'a>, transform: Transform) {
         drawable.draw(self, Color::new(0xff, 0xff, 0xff, 0xff), transform);
@@ -186,7 +208,7 @@ impl<'a> Canvas<'a> {
     }
 }
 
-/// A scene that has been prepared for rendering.
+/// A canvas that has been prepared for rendering.
 pub struct Prepared(spright::Prepared);
 
 /// Encapsulates renderer state.
@@ -254,19 +276,7 @@ impl Renderer {
         for command in canvas.commands.iter() {
             match command {
                 Command::Sprites(g) => {
-                    groups.extend(g.iter().cloned().map(|g| {
-                        StagedGroup::Sprites(SpriteGroup {
-                            sprites: g
-                                .sprites
-                                .into_iter()
-                                .map(|sprite| spright::Sprite {
-                                    transform: sprite.transform,
-                                    ..sprite
-                                })
-                                .collect(),
-                            ..g
-                        })
-                    }));
+                    groups.extend(g.iter().cloned().map(|g| StagedGroup::Sprites(g)));
                 }
                 #[cfg(feature = "text")]
                 Command::Text(sections) => {
