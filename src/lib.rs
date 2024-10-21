@@ -9,8 +9,6 @@ mod text;
 /// 8-bit RGBA color.
 pub type Color = rgb::Rgba<u8>;
 
-pub use spright::Transform;
-
 #[cfg(feature = "text")]
 pub use text::PreparedText;
 
@@ -36,8 +34,8 @@ pub struct Texture(wgpu::Texture);
 
 impl Texture {
     /// Gets the size of the texture.
-    pub fn size(&self) -> [u32; 2] {
-        [self.0.width(), self.0.height()]
+    pub fn size(&self) -> glam::UVec2 {
+        glam::UVec2::new(self.0.width(), self.0.height())
     }
 }
 
@@ -66,10 +64,8 @@ impl<'a> From<&'a wgpu::Texture> for TextureSlice<'a> {
         Self {
             texture,
             rect: spright::Rect {
-                x: 0,
-                y: 0,
-                width: size.width,
-                height: size.height,
+                offset: glam::IVec2::new(0, 0),
+                size: glam::UVec2::new(size.width, size.height),
             },
         }
     }
@@ -77,12 +73,10 @@ impl<'a> From<&'a wgpu::Texture> for TextureSlice<'a> {
 
 impl<'a> TextureSlice<'a> {
     /// Slices a texture.
-    pub fn slice(&self, x: i32, y: i32, width: u32, height: u32) -> Option<Self> {
+    pub fn slice(&self, offset: glam::IVec2, size: glam::UVec2) -> Option<Self> {
         let rect = spright::Rect {
-            x: self.rect.x + x,
-            y: self.rect.y + y,
-            width,
-            height,
+            offset: self.rect.offset + offset,
+            size,
         };
 
         if rect.left() < self.rect.left()
@@ -100,8 +94,8 @@ impl<'a> TextureSlice<'a> {
     }
 
     /// Gets the size of the texture slice.
-    pub fn size(&self) -> [u32; 2] {
-        [self.rect.width, self.rect.height]
+    pub fn size(&self) -> glam::UVec2 {
+        self.rect.size
     }
 }
 
@@ -111,7 +105,7 @@ where
     Self: Sized + Clone,
 {
     /// Called to draw the item to the canvas.
-    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: Transform);
+    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: glam::Affine2);
 
     /// Adds a tint to the drawable.
     fn tinted(&self, tint: Color) -> impl Drawable<'a> {
@@ -124,7 +118,7 @@ where
 
 #[cfg(feature = "text")]
 impl<'a> Drawable<'a> for text::PreparedText {
-    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: Transform) {
+    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: glam::Affine2) {
         let section = text::Section {
             prepared: self.clone(),
             transform,
@@ -139,7 +133,7 @@ impl<'a> Drawable<'a> for text::PreparedText {
 }
 
 impl<'a> Drawable<'a> for TextureSlice<'a> {
-    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: Transform) {
+    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: glam::Affine2) {
         let sprite = spright::Sprite {
             src: self.rect,
             transform,
@@ -176,7 +170,7 @@ impl<'a, T> Drawable<'a> for Tinted<T>
 where
     T: Drawable<'a>,
 {
-    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: Transform) {
+    fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: glam::Affine2) {
         self.drawable.draw(
             canvas,
             Color::new(
@@ -197,14 +191,14 @@ impl<'a> Canvas<'a> {
 
     /// Draws an item with the given transformation matrix.
     #[inline]
-    pub fn draw_with_transform(&mut self, drawable: impl Drawable<'a>, transform: Transform) {
+    pub fn draw_with_transform(&mut self, drawable: impl Drawable<'a>, transform: glam::Affine2) {
         drawable.draw(self, Color::new(0xff, 0xff, 0xff, 0xff), transform);
     }
 
     /// Draws an item.
     #[inline]
-    pub fn draw(&mut self, drawable: impl Drawable<'a>, x: f32, y: f32) {
-        self.draw_with_transform(drawable, Transform::translation(x, y));
+    pub fn draw(&mut self, drawable: impl Drawable<'a>, offset: glam::Vec2) {
+        self.draw_with_transform(drawable, glam::Affine2::from_translation(offset));
     }
 }
 
@@ -293,7 +287,7 @@ impl Renderer {
                                     .color
                                     .into_iter()
                                     .map(|sprite| spright::Sprite {
-                                        transform: sprite.transform * section.transform,
+                                        transform: section.transform * sprite.transform,
                                         ..sprite
                                     })
                                     .collect(),
@@ -307,7 +301,7 @@ impl Renderer {
                                     .mask
                                     .into_iter()
                                     .map(|sprite| spright::Sprite {
-                                        transform: sprite.transform * section.transform,
+                                        transform: section.transform * sprite.transform,
                                         ..sprite
                                     })
                                     .collect(),

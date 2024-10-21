@@ -10,7 +10,7 @@ pub struct TextSprites {
 
 pub struct Section {
     pub prepared: PreparedText,
-    pub transform: spright::Transform,
+    pub transform: glam::Affine2,
     pub tint: Color,
 }
 
@@ -143,15 +143,19 @@ impl SpriteMaker {
 
                 sprites.push(spright::Sprite {
                     src: spright::Rect {
-                        x: allocation.rectangle.min.x,
-                        y: allocation.rectangle.min.y,
-                        width: allocation.rectangle.width() as u32,
-                        height: allocation.rectangle.height() as u32,
+                        offset: glam::IVec2::new(
+                            allocation.rectangle.min.x,
+                            allocation.rectangle.min.y,
+                        ),
+                        size: glam::UVec2::new(
+                            allocation.rectangle.width() as u32,
+                            allocation.rectangle.height() as u32,
+                        ),
                     },
-                    transform: spright::Transform::translation(
+                    transform: glam::Affine2::from_translation(glam::Vec2::new(
                         physical_glyph.x as f32 + image.placement.left as f32,
                         physical_glyph.y as f32 + run.line_top - image.placement.top as f32,
-                    ),
+                    )),
                     tint,
                 })
             }

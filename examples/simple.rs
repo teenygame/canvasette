@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
 use canvasette::{Canvas, Drawable as _, Renderer, TextureSlice};
-use spright::Transform;
+use image::GenericImageView;
 use wgpu::{
-    Adapter, CreateSurfaceError, Device, DeviceDescriptor, PresentMode, Queue, Surface,
-    SurfaceConfiguration,
+    util::DeviceExt, Adapter, CreateSurfaceError, Device, DeviceDescriptor, PresentMode, Queue,
+    Surface, SurfaceConfiguration,
 };
 use winit::{
     application::ApplicationHandler,
@@ -43,6 +43,34 @@ struct Inner {
     texture2: wgpu::Texture,
 }
 
+fn load_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    img: &image::DynamicImage,
+) -> wgpu::Texture {
+    let (width, height) = img.dimensions();
+
+    device.create_texture_with_data(
+        queue,
+        &wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        wgpu::util::TextureDataOrder::default(),
+        &img.to_rgba8(),
+    )
+}
+
 impl Inner {
     fn new(gfx: &Graphics) -> Self {
         let mut renderer = Renderer::new(
@@ -53,12 +81,12 @@ impl Inner {
         Self {
             sprite1_x_pos: 0.0,
             renderer,
-            texture1: spright::texture::load(
+            texture1: load_texture(
                 &gfx.device,
                 &gfx.queue,
                 &image::load_from_memory(include_bytes!("test.png")).unwrap(),
             ),
-            texture2: spright::texture::load(
+            texture2: load_texture(
                 &gfx.device,
                 &gfx.queue,
                 &image::load_from_memory(include_bytes!("test2.png")).unwrap(),
@@ -88,9 +116,10 @@ impl Inner {
 
         canvas.draw_with_transform(
             TextureSlice::from(&self.texture2)
-                .slice(0, 0, 300, 300)
+                .slice(glam::IVec2::new(0, 0), glam::UVec2::new(300, 300))
                 .unwrap(),
-            Transform::translation(30.0, 30.0) * Transform::scaling(4.0, 4.0),
+            glam::Affine2::from_scale(glam::Vec2::new(4.0, 4.0))
+                * glam::Affine2::from_translation(glam::Vec2::new(30.0, 30.0)),
         );
 
         canvas.draw_with_transform(
@@ -101,10 +130,13 @@ impl Inner {
                     canvasette::font::Attrs::default(),
                 )
                 .tinted(canvasette::Color::new(0xff, 0xff, 0x00, 0xff)),
-            spright::Transform::translation(2.0, 1.0)
-                * spright::Transform::rotation(self.sprite1_x_pos * 0.01),
+            glam::Affine2::from_angle(self.sprite1_x_pos * 0.01)
+                * glam::Affine2::from_translation(glam::Vec2::new(2.0, 1.0)),
         );
-        canvas.draw(TextureSlice::from(&self.texture1), 0.0, 0.0);
+        canvas.draw(
+            TextureSlice::from(&self.texture1),
+            glam::Vec2::new(0.0, 0.0),
+        );
 
         let prepared = self
             .renderer
@@ -131,7 +163,7 @@ impl Inner {
         self.sprite1_x_pos += 1.0;
 
         let mut scene = Canvas::new();
-        scene.draw(TextureSlice::from(&target), 100.0, 100.0);
+        scene.draw(TextureSlice::from(&target), glam::Vec2::new(100.0, 100.0));
         let prepared = self
             .renderer
             .prepare(device, queue, texture.size(), &scene)
