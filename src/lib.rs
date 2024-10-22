@@ -72,7 +72,11 @@ impl<'a> From<&'a wgpu::Texture> for TextureSlice<'a> {
 }
 
 impl<'a> TextureSlice<'a> {
-    /// Slices a texture.
+    /// Slices a texture slice.
+    ///
+    /// Note that `offset` represents an offset into the slice and not into the overall texture -- the returned slice's offset will be the current offset + new offset.
+    ///
+    /// Returns [`None`] if the slice goes out of bounds.
     pub fn slice(&self, offset: glam::IVec2, size: glam::UVec2) -> Option<Self> {
         let rect = spright::Rect {
             offset: self.rect.offset + offset,
