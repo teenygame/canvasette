@@ -46,6 +46,8 @@ impl From<wgpu::Texture> for Texture {
 }
 
 /// Represents a view into a texture.
+///
+/// [`TextureSlice`]s can be created from [`Texture`]s using [`TextureSlice::from`].
 #[derive(Clone, Copy)]
 pub struct TextureSlice<'a> {
     texture: &'a wgpu::Texture,
@@ -72,7 +74,7 @@ impl<'a> From<&'a wgpu::Texture> for TextureSlice<'a> {
 }
 
 impl<'a> TextureSlice<'a> {
-    /// Slices a texture slice.
+    /// Slices the texture slice.
     ///
     /// Note that `offset` represents an offset into the slice and not into the overall texture -- the returned slice's offset will be the current offset + new offset.
     ///
