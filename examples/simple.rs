@@ -77,7 +77,7 @@ impl Inner {
             &gfx.device,
             gfx.surface.get_capabilities(&gfx.adapter).formats[0],
         );
-        let faces = renderer.add_font(include_bytes!("NotoSans-Regular.ttf"));
+        renderer.add_font(include_bytes!("NotoSans-Regular.ttf"));
         Self {
             sprite1_x_pos: 0.0,
             renderer,
