@@ -31,14 +31,16 @@ pub struct SpriteMaker {
 pub struct PreparedText(cosmic_text::Buffer);
 
 impl PreparedText {
-    /// Computes the bounding box of the text.
-    pub fn bounding_box(&self) -> glam::Vec2 {
-        let mut size = glam::Vec2::ZERO;
-        for run in self.0.layout_runs() {
-            size.x = size.x.max(run.line_w);
-            size.y = run.line_top + run.line_height;
-        }
-        size
+    /// Computes the size of the text.
+    pub fn size(&self) -> glam::Vec2 {
+        glam::Vec2::new(
+            self.0.layout_runs().fold(0.0, |x, run| x.max(run.line_w)),
+            self.0
+                .layout_runs()
+                .last()
+                .map(|run| run.line_top + run.line_height)
+                .unwrap_or(0.0),
+        )
     }
 }
 
