@@ -247,8 +247,8 @@ impl Renderer {
 
     /// Adds a font to the renderer.
     #[cfg(feature = "text")]
-    pub fn add_font(&mut self, font: &[u8]) {
-        self.text_sprite_maker.add_font(font);
+    pub fn add_font(&mut self, font: &[u8]) -> Vec<font::Attrs> {
+        self.text_sprite_maker.add_font(font)
     }
 
     /// Prepares text for rendering.

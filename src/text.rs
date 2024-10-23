@@ -57,8 +57,23 @@ impl SpriteMaker {
         }
     }
 
-    pub fn add_font(&mut self, font: &[u8]) {
-        self.font_system.db_mut().load_font_data(font.to_vec());
+    pub fn add_font(&mut self, font: &[u8]) -> Vec<font::Attrs> {
+        self.font_system
+            .db_mut()
+            .load_font_source(cosmic_text::fontdb::Source::Binary(std::sync::Arc::new(
+                font.to_vec(),
+            )))
+            .into_iter()
+            .flat_map(|id| {
+                let face_info = self.font_system.db().face(id)?;
+                Some(font::Attrs {
+                    family: font::Family::Name(face_info.families.first()?.0.clone()),
+                    stretch: face_info.stretch,
+                    style: face_info.style,
+                    weight: face_info.weight,
+                })
+            })
+            .collect::<Vec<_>>()
     }
 
     pub fn mask_texture(&self) -> &wgpu::Texture {

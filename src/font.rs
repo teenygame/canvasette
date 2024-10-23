@@ -3,6 +3,7 @@
 pub use cosmic_text::{FamilyOwned as Family, Metrics, Stretch, Style, Weight};
 
 /// Font attributes.
+#[derive(Debug)]
 pub struct Attrs {
     /// Font family (e.g. sans-serif, serif).
     pub family: Family,
