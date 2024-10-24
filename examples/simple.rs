@@ -138,8 +138,7 @@ impl Inner {
             glam::Vec2::new(0.0, 0.0),
         );
 
-        let prepared = self
-            .renderer
+        self.renderer
             .prepare(device, queue, target.size(), &canvas)
             .unwrap();
         let mut encoder =
@@ -156,7 +155,7 @@ impl Inner {
                 })],
                 ..Default::default()
             });
-            self.renderer.render(&mut rpass, &prepared);
+            self.renderer.render(&mut rpass);
         }
         queue.submit(Some(encoder.finish()));
 
@@ -164,8 +163,7 @@ impl Inner {
 
         let mut scene = Canvas::new();
         scene.draw(TextureSlice::from(&target), glam::Vec2::new(100.0, 100.0));
-        let prepared = self
-            .renderer
+        self.renderer
             .prepare(device, queue, texture.size(), &scene)
             .unwrap();
         let mut encoder =
@@ -182,7 +180,7 @@ impl Inner {
                 })],
                 ..Default::default()
             });
-            self.renderer.render(&mut rpass, &prepared);
+            self.renderer.render(&mut rpass);
         }
         queue.submit(Some(encoder.finish()));
     }
@@ -268,6 +266,12 @@ impl ApplicationHandler<UserEvent> for Application {
         event: WindowEvent,
     ) {
         match event {
+            WindowEvent::Resized(size) => {
+                let Some(gfx) = &mut self.gfx else {
+                    return;
+                };
+                gfx.resize(size);
+            }
             WindowEvent::RedrawRequested => {
                 let Some(gfx) = &mut self.gfx else {
                     return;
@@ -282,8 +286,8 @@ impl ApplicationHandler<UserEvent> for Application {
                     .get_current_texture()
                     .expect("Failed to acquire next swap chain texture");
                 inner.render(&gfx.device, &gfx.queue, &frame.texture);
+                gfx.window.pre_present_notify();
                 frame.present();
-
                 gfx.window.request_redraw();
             }
             WindowEvent::CloseRequested => event_loop.exit(),

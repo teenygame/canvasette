@@ -5,9 +5,11 @@ use imgref::ImgRef;
 use crate::atlas::Atlas;
 use crate::{font, Color};
 
-pub struct TextSprites {
-    pub color: Vec<spright::Sprite>,
-    pub mask: Vec<spright::Sprite>,
+pub struct TextSprite {
+    pub is_mask: bool,
+    pub src: spright::Rect,
+    pub transform: glam::Affine2,
+    pub tint: Color,
 }
 
 pub struct Section {
@@ -112,11 +114,8 @@ impl SpriteMaker {
         queue: &wgpu::Queue,
         prepared_text: &PreparedText,
         color: Color,
-    ) -> Option<TextSprites> {
-        let mut text_sprites = TextSprites {
-            color: vec![],
-            mask: vec![],
-        };
+    ) -> Option<Vec<TextSprite>> {
+        let mut text_sprites = vec![];
 
         for run in prepared_text.0.layout_runs() {
             for glyph in run.glyphs.iter() {
@@ -135,9 +134,9 @@ impl SpriteMaker {
                     continue;
                 }
 
-                let (sprites, allocation, tint) = match image.content {
+                let (is_mask, allocation, tint) = match image.content {
                     cosmic_text::SwashContent::Mask | cosmic_text::SwashContent::SubpixelMask => (
-                        &mut text_sprites.mask,
+                        true,
                         if let Some(allocation) = self.mask_atlas.get(physical_glyph.cache_key) {
                             allocation
                         } else {
@@ -158,7 +157,7 @@ impl SpriteMaker {
                             .unwrap_or(color),
                     ),
                     cosmic_text::SwashContent::Color => (
-                        &mut text_sprites.color,
+                        false,
                         if let Some(allocation) = self.color_atlas.get(physical_glyph.cache_key) {
                             allocation
                         } else {
@@ -177,7 +176,8 @@ impl SpriteMaker {
                     ),
                 };
 
-                sprites.push(spright::Sprite {
+                text_sprites.push(TextSprite {
+                    is_mask,
                     src: spright::Rect {
                         offset: glam::IVec2::new(
                             allocation.rectangle.min.x,

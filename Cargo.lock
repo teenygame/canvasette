@@ -226,7 +226,7 @@ dependencies = [
 
 [[package]]
 name = "canvasette"
-version = "0.12.1"
+version = "0.13.0"
 dependencies = [
  "bytemuck",
  "cosmic-text",
@@ -813,6 +813,15 @@ checksum = "707907fe3c25f5424cce2cb7e1cbcafee6bdbe735ca90ef77c29e84591e5b9da"
 dependencies = [
  "equivalent",
  "hashbrown 0.15.0",
+]
+
+[[package]]
+name = "itertools"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+dependencies = [
+ "either",
 ]
 
 [[package]]
@@ -1737,13 +1746,14 @@ dependencies = [
 
 [[package]]
 name = "spright"
-version = "0.11.0"
+version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9b0b0d3b8c38a8ddefe08ff82a10256eab5eaa3d0a16609e9dc14d8a37b75136"
+checksum = "e707a41e9b72d848983976b8a8a1973bc6bf418818e9ad750c4d1d1e3bf84d6e"
 dependencies = [
  "bytemuck",
  "crevice",
  "glam",
+ "itertools",
  "rgb",
  "wgpu",
 ]

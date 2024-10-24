@@ -12,16 +12,10 @@ pub type Color = rgb::Rgba<u8>;
 #[cfg(feature = "text")]
 pub use text::PreparedText;
 
-#[derive(Clone)]
-struct SpriteGroup<'a> {
-    texture: &'a wgpu::Texture,
-    sprites: Vec<spright::Sprite>,
-}
-
 enum Command<'a> {
-    Sprites(Vec<SpriteGroup<'a>>),
+    Sprite(spright::Sprite<'a>),
     #[cfg(feature = "text")]
-    Text(Vec<text::Section>),
+    Text(text::Section),
 }
 
 /// A canvas for drawing onto.
@@ -125,44 +119,22 @@ where
 #[cfg(feature = "text")]
 impl<'a> Drawable<'a> for text::PreparedText {
     fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: glam::Affine2) {
-        let section = text::Section {
+        canvas.commands.push(Command::Text(text::Section {
             prepared: self.clone(),
             transform,
             tint,
-        };
-        if let Some(Command::Text(sections)) = canvas.commands.last_mut() {
-            sections.push(section);
-        } else {
-            canvas.commands.push(Command::Text(vec![section]));
-        }
+        }));
     }
 }
 
 impl<'a> Drawable<'a> for TextureSlice<'a> {
     fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: glam::Affine2) {
-        let sprite = spright::Sprite {
+        canvas.commands.push(Command::Sprite(spright::Sprite {
+            texture: &self.texture,
             src: self.rect,
             transform,
             tint,
-        };
-        if let Some(Command::Sprites(groups)) = canvas.commands.last_mut() {
-            if let Some(group) = groups
-                .last_mut()
-                .filter(|g| g.texture.global_id() == self.texture.global_id())
-            {
-                group.sprites.push(sprite);
-            } else {
-                groups.push(SpriteGroup {
-                    texture: self.texture,
-                    sprites: vec![sprite],
-                });
-            }
-        } else {
-            canvas.commands.push(Command::Sprites(vec![SpriteGroup {
-                texture: self.texture,
-                sprites: vec![sprite],
-            }]));
-        }
+        }));
     }
 }
 
@@ -208,9 +180,6 @@ impl<'a> Canvas<'a> {
     }
 }
 
-/// A canvas that has been prepared for rendering.
-pub struct Prepared(spright::Prepared);
-
 /// Encapsulates renderer state.
 pub struct Renderer {
     renderer: spright::Renderer,
@@ -224,15 +193,6 @@ pub enum Error {
     /// Glyph atlas has run out of space.
     #[error("out of glylph atlas space")]
     OutOfGlyphAtlasSpace,
-}
-
-enum StagedGroup<'a> {
-    Sprites(SpriteGroup<'a>),
-    #[cfg(feature = "text")]
-    Text {
-        sprites: Vec<spright::Sprite>,
-        use_color_texture: bool,
-    },
 }
 
 impl Renderer {
@@ -270,98 +230,66 @@ impl Renderer {
         queue: &wgpu::Queue,
         target_size: wgpu::Extent3d,
         canvas: &Canvas,
-    ) -> Result<Prepared, Error> {
-        let mut groups = vec![];
+    ) -> Result<(), Error> {
+        let mut staged = vec![];
 
-        for command in canvas.commands.iter() {
-            match command {
-                Command::Sprites(g) => {
-                    groups.extend(g.iter().cloned().map(|g| StagedGroup::Sprites(g)));
+        enum Staged<'a> {
+            Sprite(spright::Sprite<'a>),
+            TextSprite(text::TextSprite),
+        }
+
+        for cmd in canvas.commands.iter() {
+            match cmd {
+                Command::Sprite(sprite) => {
+                    staged.push(Staged::Sprite(sprite.clone()));
                 }
-                #[cfg(feature = "text")]
-                Command::Text(sections) => {
-                    for section in sections {
-                        let allocation = self
-                            .text_sprite_maker
+                Command::Text(section) => {
+                    staged.extend(
+                        self.text_sprite_maker
                             .make(device, queue, &section.prepared, section.tint)
-                            .ok_or(Error::OutOfGlyphAtlasSpace)?;
-
-                        if !allocation.color.is_empty() {
-                            groups.push(StagedGroup::Text {
-                                use_color_texture: true,
-                                sprites: allocation
-                                    .color
-                                    .into_iter()
-                                    .map(|sprite| spright::Sprite {
-                                        transform: section.transform * sprite.transform,
-                                        ..sprite
-                                    })
-                                    .collect(),
-                            });
-                        }
-
-                        if !allocation.mask.is_empty() {
-                            groups.push(StagedGroup::Text {
-                                use_color_texture: false,
-                                sprites: allocation
-                                    .mask
-                                    .into_iter()
-                                    .map(|sprite| spright::Sprite {
-                                        transform: section.transform * sprite.transform,
-                                        ..sprite
-                                    })
-                                    .collect(),
-                            });
-                        }
-                    }
+                            .ok_or(Error::OutOfGlyphAtlasSpace)?
+                            .into_iter()
+                            .map(|s| {
+                                Staged::TextSprite(text::TextSprite {
+                                    transform: section.transform * s.transform,
+                                    ..s
+                                })
+                            }),
+                    );
                 }
             }
         }
 
+        self.renderer.prepare(
+            device,
+            queue,
+            target_size,
+            &staged
+                .into_iter()
+                .map(|staged| match staged {
+                    Staged::Sprite(sprite) => sprite,
+                    Staged::TextSprite(text_sprite) => spright::Sprite {
+                        texture: if text_sprite.is_mask {
+                            self.text_sprite_maker.mask_texture()
+                        } else {
+                            self.text_sprite_maker.color_texture()
+                        },
+                        src: text_sprite.src,
+                        tint: text_sprite.tint,
+                        transform: text_sprite.transform,
+                    },
+                })
+                .collect::<Vec<_>>(),
+        );
+
         #[cfg(feature = "text")]
         self.text_sprite_maker.flush(queue);
 
-        Ok(Prepared(
-            self.renderer.prepare(
-                device,
-                target_size,
-                &groups
-                    .iter()
-                    .map(|g| match g {
-                        StagedGroup::Sprites(g) => spright::Group {
-                            texture: g.texture,
-                            texture_kind: spright::TextureKind::Color,
-                            sprites: &g.sprites,
-                        },
-                        #[cfg(feature = "text")]
-                        StagedGroup::Text {
-                            sprites,
-                            use_color_texture,
-                        } => spright::Group {
-                            texture: if *use_color_texture {
-                                self.text_sprite_maker.color_texture()
-                            } else {
-                                self.text_sprite_maker.mask_texture()
-                            },
-                            texture_kind: if *use_color_texture {
-                                spright::TextureKind::Color
-                            } else {
-                                spright::TextureKind::Mask
-                            },
-                            sprites: &sprites,
-                        },
-                    })
-                    .collect::<Vec<_>>(),
-            ),
-        ))
+        Ok(())
     }
 
     /// Renders a prepared scene.
-    pub fn render<'rpass>(
-        &'rpass self,
-        rpass: &'rpass mut wgpu::RenderPass<'rpass>,
-        prepared: &'rpass Prepared,
-    ) {
-        self.renderer.render(rpass, &prepared.0);
+    pub fn render<'rpass>(&'rpass self, rpass: &'rpass mut wgpu::RenderPass<'rpass>) {
+        self.renderer.render(rpass);
     }
 }
