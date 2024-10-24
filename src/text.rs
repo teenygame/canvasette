@@ -36,7 +36,11 @@ impl PreparedText {
     /// Computes the size of the text.
     pub fn size(&self) -> glam::Vec2 {
         glam::Vec2::new(
-            self.0.layout_runs().fold(0.0, |x, run| x.max(run.line_w)),
+            self.0
+                .layout_runs()
+                .map(|run| run.line_w)
+                .max_by(f32::total_cmp)
+                .unwrap_or(0.0),
             self.0
                 .layout_runs()
                 .last()
