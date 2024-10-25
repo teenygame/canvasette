@@ -1,6 +1,5 @@
-use std::collections::HashSet;
-
 use imgref::ImgRef;
+use indexmap::IndexMap;
 
 use crate::atlas::Atlas;
 use crate::{font, Color};
@@ -24,8 +23,8 @@ pub struct SpriteMaker {
     mask_atlas: Atlas<cosmic_text::CacheKey, u8>,
     color_atlas: Atlas<cosmic_text::CacheKey, rgb::Rgba<u8>>,
 
-    last_cache_keys: HashSet<cosmic_text::CacheKey>,
-    cache_keys: HashSet<cosmic_text::CacheKey>,
+    draw_count: usize,
+    last_draw_at: IndexMap<cosmic_text::CacheKey, usize>,
 }
 
 /// Text that has been laid out and shaped.
@@ -60,8 +59,8 @@ impl SpriteMaker {
             swash_cache: cosmic_text::SwashCache::new(),
             mask_atlas: Atlas::new(device),
             color_atlas: Atlas::new(device),
-            last_cache_keys: HashSet::new(),
-            cache_keys: HashSet::new(),
+            draw_count: 0,
+            last_draw_at: IndexMap::new(),
         }
     }
 
@@ -132,7 +131,8 @@ impl SpriteMaker {
                     continue;
                 };
 
-                self.cache_keys.insert(physical_glyph.cache_key);
+                self.last_draw_at
+                    .insert_before(0, physical_glyph.cache_key, self.draw_count);
 
                 if image.placement.width == 0 || image.placement.height == 0 {
                     continue;
@@ -204,12 +204,37 @@ impl SpriteMaker {
         Some(text_sprites)
     }
 
-    pub fn flush(&mut self, queue: &wgpu::Queue) {
-        for k in self.last_cache_keys.difference(&self.cache_keys) {
-            self.color_atlas.remove(queue, k);
-            self.mask_atlas.remove(queue, k);
+    fn remove_unused(&mut self, queue: &wgpu::Queue) {
+        const MAX_CACHE_AGE: usize = 100;
+
+        let i = match self
+            .last_draw_at
+            .iter()
+            .rposition(|(_, t)| (self.draw_count - *t) < MAX_CACHE_AGE)
+        {
+            Some(i) => i + 1,
+            None => {
+                if self
+                    .last_draw_at
+                    .first()
+                    .map(|(_, t)| (self.draw_count - *t) >= MAX_CACHE_AGE)
+                    .unwrap_or(false)
+                {
+                    0
+                } else {
+                    return;
+                }
+            }
+        };
+
+        for (k, _) in self.last_draw_at.drain(i..) {
+            self.color_atlas.remove(queue, &k);
+            self.mask_atlas.remove(queue, &k);
         }
-        self.last_cache_keys = self.cache_keys.clone();
-        self.cache_keys.clear();
+    }
+
+    pub fn flush(&mut self, queue: &wgpu::Queue) {
+        self.remove_unused(queue);
+        self.draw_count += 1;
     }
 }
