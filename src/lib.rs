@@ -169,14 +169,8 @@ impl<'a> Canvas<'a> {
 
     /// Draws an item with the given transformation matrix.
     #[inline]
-    pub fn draw_with_transform(&mut self, drawable: impl Drawable<'a>, transform: glam::Affine2) {
+    pub fn draw(&mut self, drawable: impl Drawable<'a>, transform: glam::Affine2) {
         drawable.draw(self, Color::new(0xff, 0xff, 0xff, 0xff), transform);
-    }
-
-    /// Draws an item.
-    #[inline]
-    pub fn draw(&mut self, drawable: impl Drawable<'a>, offset: glam::Vec2) {
-        self.draw_with_transform(drawable, glam::Affine2::from_translation(offset));
     }
 }
 

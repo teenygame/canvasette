@@ -114,7 +114,7 @@ impl Inner {
 
         let mut canvas = Canvas::new();
 
-        canvas.draw_with_transform(
+        canvas.draw(
             TextureSlice::from(&self.texture2)
                 .slice(glam::IVec2::new(0, 0), glam::UVec2::new(300, 300))
                 .unwrap(),
@@ -122,7 +122,7 @@ impl Inner {
                 * glam::Affine2::from_translation(glam::Vec2::new(30.0, 30.0)),
         );
 
-        canvas.draw_with_transform(
+        canvas.draw(
             self.renderer
                 .prepare_text(
                     format!("HELLO WORLD {}", self.sprite1_x_pos),
@@ -135,7 +135,7 @@ impl Inner {
         );
         canvas.draw(
             TextureSlice::from(&self.texture1),
-            glam::Vec2::new(0.0, 0.0),
+            glam::Affine2::from_translation(glam::Vec2::new(0.0, 0.0)),
         );
 
         self.renderer
@@ -162,7 +162,10 @@ impl Inner {
         self.sprite1_x_pos += 1.0;
 
         let mut scene = Canvas::new();
-        scene.draw(TextureSlice::from(&target), glam::Vec2::new(100.0, 100.0));
+        scene.draw(
+            TextureSlice::from(&target),
+            glam::Affine2::from_translation(glam::Vec2::new(100.0, 100.0)),
+        );
         self.renderer
             .prepare(device, queue, texture.size(), &scene)
             .unwrap();

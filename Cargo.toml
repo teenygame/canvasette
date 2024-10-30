@@ -2,7 +2,7 @@
 name = "canvasette"
 description = "A minimal library for wgpu that draws sprites and text"
 repository = "https://github.com/teenygame/canvasette"
-version = "0.13.0"
+version = "0.14.0"
 edition = "2021"
 license = "LGPL-3.0-or-later"
 
