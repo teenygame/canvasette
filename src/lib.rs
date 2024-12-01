@@ -188,7 +188,7 @@ impl Renderer {
                 .map(|staged| match staged {
                     Staged::Sprite(sprite) => sprite,
                     Staged::TextSprite(text_sprite) => spright::Sprite {
-                        slice: TextureSlice::new(
+                        slice: TextureSlice::from_layer(
                             if text_sprite.is_mask {
                                 self.text_sprite_maker.mask_texture()
                             } else {
@@ -196,6 +196,7 @@ impl Renderer {
                             },
                             0,
                         )
+                        .unwrap()
                         .slice(text_sprite.offset, text_sprite.size)
                         .unwrap(),
                         tint: text_sprite.tint,

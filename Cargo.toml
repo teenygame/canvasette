@@ -2,7 +2,7 @@
 name = "canvasette"
 description = "A minimal library for wgpu that draws sprites and text"
 repository = "https://github.com/teenygame/canvasette"
-version = "0.15.0"
+version = "0.16.0"
 edition = "2021"
 license = "LGPL-3.0-or-later"
 
@@ -12,7 +12,7 @@ text = ["dep:cosmic-text"]
 
 [dependencies]
 wgpu = "23.0.1"
-spright = "0.14.0"
+spright = "0.15.0"
 cosmic-text = { version = "0.12.1", optional = true }
 etagere = "0.2.13"
 rgb = "0.8.50"
