@@ -6,7 +6,8 @@ use crate::{font, Color};
 
 pub struct TextSprite {
     pub is_mask: bool,
-    pub src: spright::Rect,
+    pub offset: glam::IVec2,
+    pub size: glam::UVec2,
     pub transform: glam::Affine2,
     pub tint: Color,
 }
@@ -182,16 +183,14 @@ impl SpriteMaker {
 
                 text_sprites.push(TextSprite {
                     is_mask,
-                    src: spright::Rect {
-                        offset: glam::IVec2::new(
-                            allocation.rectangle.min.x,
-                            allocation.rectangle.min.y,
-                        ),
-                        size: glam::UVec2::new(
-                            allocation.rectangle.width() as u32,
-                            allocation.rectangle.height() as u32,
-                        ),
-                    },
+                    offset: glam::IVec2::new(
+                        allocation.rectangle.min.x,
+                        allocation.rectangle.min.y,
+                    ),
+                    size: glam::UVec2::new(
+                        allocation.rectangle.width() as u32,
+                        allocation.rectangle.height() as u32,
+                    ),
                     transform: glam::Affine2::from_translation(glam::Vec2::new(
                         physical_glyph.x as f32 + image.placement.left as f32,
                         physical_glyph.y as f32 + run.line_top - image.placement.top as f32,

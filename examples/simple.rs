@@ -1,6 +1,6 @@
 use std::sync::Arc;
 
-use canvasette::{Canvas, Drawable as _, Renderer, TextureSlice};
+use canvasette::{Canvas, Drawable as _, Renderer};
 use image::GenericImageView;
 use wgpu::{
     util::DeviceExt, Adapter, CreateSurfaceError, Device, DeviceDescriptor, PresentMode, Queue,
@@ -115,7 +115,7 @@ impl Inner {
         let mut canvas = Canvas::new();
 
         canvas.draw(
-            TextureSlice::from(&self.texture2)
+            spright::TextureSlice::new(&self.texture2, 0)
                 .slice(glam::IVec2::new(0, 0), glam::UVec2::new(300, 300))
                 .unwrap(),
             glam::Affine2::from_scale(glam::Vec2::new(4.0, 4.0))
@@ -134,7 +134,7 @@ impl Inner {
                 * glam::Affine2::from_translation(glam::Vec2::new(2.0, 1.0)),
         );
         canvas.draw(
-            TextureSlice::from(&self.texture1),
+            spright::TextureSlice::new(&self.texture1, 0),
             glam::Affine2::from_translation(glam::Vec2::new(0.0, 0.0)),
         );
 
@@ -163,7 +163,7 @@ impl Inner {
 
         let mut scene = Canvas::new();
         scene.draw(
-            TextureSlice::from(&target),
+            spright::TextureSlice::new(&target, 0),
             glam::Affine2::from_translation(glam::Vec2::new(100.0, 100.0)),
         );
         self.renderer

@@ -23,82 +23,6 @@ pub struct Canvas<'a> {
     commands: Vec<Command<'a>>,
 }
 
-/// A texture that can be rendered.
-pub struct Texture(wgpu::Texture);
-
-impl Texture {
-    /// Gets the size of the texture.
-    pub fn size(&self) -> glam::UVec2 {
-        glam::UVec2::new(self.0.width(), self.0.height())
-    }
-}
-
-impl From<wgpu::Texture> for Texture {
-    fn from(texture: wgpu::Texture) -> Self {
-        Self(texture)
-    }
-}
-
-/// Represents a view into a texture.
-///
-/// [`TextureSlice`]s can be created from [`Texture`]s using [`TextureSlice::from`].
-#[derive(Clone, Copy)]
-pub struct TextureSlice<'a> {
-    texture: &'a wgpu::Texture,
-    rect: spright::Rect,
-}
-
-impl<'a> From<&'a Texture> for TextureSlice<'a> {
-    fn from(texture: &'a Texture) -> Self {
-        Self::from(&texture.0)
-    }
-}
-
-impl<'a> From<&'a wgpu::Texture> for TextureSlice<'a> {
-    fn from(texture: &'a wgpu::Texture) -> Self {
-        let size = texture.size();
-        Self {
-            texture,
-            rect: spright::Rect {
-                offset: glam::IVec2::new(0, 0),
-                size: glam::UVec2::new(size.width, size.height),
-            },
-        }
-    }
-}
-
-impl<'a> TextureSlice<'a> {
-    /// Slices the texture slice.
-    ///
-    /// Note that `offset` represents an offset into the slice and not into the overall texture -- the returned slice's offset will be the current offset + new offset.
-    ///
-    /// Returns [`None`] if the slice goes out of bounds.
-    pub fn slice(&self, offset: glam::IVec2, size: glam::UVec2) -> Option<Self> {
-        let rect = spright::Rect {
-            offset: self.rect.offset + offset,
-            size,
-        };
-
-        if rect.left() < self.rect.left()
-            || rect.right() > self.rect.right()
-            || rect.top() < self.rect.top()
-            || rect.bottom() > self.rect.bottom()
-        {
-            return None;
-        }
-
-        Some(Self {
-            texture: self.texture,
-            rect,
-        })
-    }
-
-    /// Gets the size of the texture slice.
-    pub fn size(&self) -> glam::UVec2 {
-        self.rect.size
-    }
-}
-
 /// Things that can be drawn.
 pub trait Drawable<'a>
 where
@@ -127,11 +51,10 @@ impl<'a> Drawable<'a> for text::PreparedText {
     }
 }
 
-impl<'a> Drawable<'a> for TextureSlice<'a> {
+impl<'a> Drawable<'a> for spright::TextureSlice<'a> {
     fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: glam::Affine2) {
         canvas.commands.push(Command::Sprite(spright::Sprite {
-            texture: &self.texture,
-            src: self.rect,
+            slice: self.clone(),
             transform,
             tint,
         }));
@@ -263,12 +186,16 @@ impl Renderer {
                 .map(|staged| match staged {
                     Staged::Sprite(sprite) => sprite,
                     Staged::TextSprite(text_sprite) => spright::Sprite {
-                        texture: if text_sprite.is_mask {
-                            self.text_sprite_maker.mask_texture()
-                        } else {
-                            self.text_sprite_maker.color_texture()
-                        },
-                        src: text_sprite.src,
+                        slice: spright::TextureSlice::new(
+                            if text_sprite.is_mask {
+                                self.text_sprite_maker.mask_texture()
+                            } else {
+                                self.text_sprite_maker.color_texture()
+                            },
+                            0,
+                        )
+                        .slice(text_sprite.offset, text_sprite.size)
+                        .unwrap(),
                         tint: text_sprite.tint,
                         transform: text_sprite.transform,
                     },
