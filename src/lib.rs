@@ -12,6 +12,8 @@ pub type Color = rgb::Rgba<u8>;
 #[cfg(feature = "text")]
 pub use text::PreparedText;
 
+pub use spright::TextureSlice;
+
 enum Command<'a> {
     Sprite(spright::Sprite<'a>),
     #[cfg(feature = "text")]
@@ -51,7 +53,7 @@ impl<'a> Drawable<'a> for text::PreparedText {
     }
 }
 
-impl<'a> Drawable<'a> for spright::TextureSlice<'a> {
+impl<'a> Drawable<'a> for TextureSlice<'a> {
     fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: glam::Affine2) {
         canvas.commands.push(Command::Sprite(spright::Sprite {
             slice: self.clone(),
@@ -186,7 +188,7 @@ impl Renderer {
                 .map(|staged| match staged {
                     Staged::Sprite(sprite) => sprite,
                     Staged::TextSprite(text_sprite) => spright::Sprite {
-                        slice: spright::TextureSlice::new(
+                        slice: TextureSlice::new(
                             if text_sprite.is_mask {
                                 self.text_sprite_maker.mask_texture()
                             } else {
