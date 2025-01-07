@@ -1,5 +1,7 @@
 //! canvasette is a minimal library for wgpu that draws sprites and text. That's it!
 
+use glam::*;
+
 mod atlas;
 #[cfg(feature = "text")]
 pub mod font;
@@ -12,10 +14,8 @@ pub type Color = rgb::Rgba<u8>;
 #[cfg(feature = "text")]
 pub use text::PreparedText;
 
-pub use spright::TextureSlice;
-
 enum Command<'a> {
-    Sprite(spright::Sprite<'a>),
+    Sprite(spright::batch::Sprite<'a>),
     #[cfg(feature = "text")]
     Text(text::Section),
 }
@@ -53,13 +53,88 @@ impl<'a> Drawable<'a> for text::PreparedText {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
+struct Rect {
+    offset: IVec2,
+    size: UVec2,
+}
+impl Rect {
+    fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
+        Self {
+            offset: IVec2::new(x, y),
+            size: UVec2::new(width, height),
+        }
+    }
+    const fn left(&self) -> i32 {
+        self.offset.x
+    }
+    const fn top(&self) -> i32 {
+        self.offset.y
+    }
+    const fn right(&self) -> i32 {
+        self.offset.x + self.size.x as i32
+    }
+    const fn bottom(&self) -> i32 {
+        self.offset.y + self.size.y as i32
+    }
+}
+/// Represents a slice of a texture to draw.
+#[derive(Debug, Clone, Copy)]
+pub struct TextureSlice<'a> {
+    texture: &'a wgpu::Texture,
+    layer: u32,
+    rect: Rect,
+}
+impl<'a> TextureSlice<'a> {
+    /// Creates a new texture slice from a raw texture.
+    pub fn from_layer(texture: &'a wgpu::Texture, layer: u32) -> Option<Self> {
+        let size = texture.size();
+        if layer >= size.depth_or_array_layers {
+            return None;
+        }
+        Some(Self {
+            texture,
+            layer,
+            rect: Rect::new(0, 0, size.width, size.height),
+        })
+    }
+    /// Slices the texture slice.
+    ///
+    /// Note that `offset` represents an offset into the slice and not into the overall texture -- the returned slice's offset will be the current offset + new offset.
+    ///
+    /// Returns [`None`] if the slice goes out of bounds.
+    pub fn slice(&self, offset: glam::IVec2, size: glam::UVec2) -> Option<Self> {
+        let rect = Rect {
+            offset: self.rect.offset + offset,
+            size,
+        };
+        if rect.left() < self.rect.left()
+            || rect.right() > self.rect.right()
+            || rect.top() < self.rect.top()
+            || rect.bottom() > self.rect.bottom()
+        {
+            return None;
+        }
+        Some(Self {
+            texture: self.texture,
+            layer: self.layer,
+            rect,
+        })
+    }
+}
+
 impl<'a> Drawable<'a> for TextureSlice<'a> {
     fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: glam::Affine2) {
-        canvas.commands.push(Command::Sprite(spright::Sprite {
-            slice: self.clone(),
-            transform,
-            tint,
-        }));
+        canvas
+            .commands
+            .push(Command::Sprite(spright::batch::Sprite {
+                transform,
+                tint,
+                texture: &self.texture,
+                src_offset: self.rect.offset,
+                src_size: self.rect.size,
+                src_layer: self.layer,
+            }));
     }
 }
 
@@ -153,7 +228,7 @@ impl Renderer {
         let mut staged = vec![];
 
         enum Staged<'a> {
-            Sprite(spright::Sprite<'a>),
+            Sprite(spright::batch::Sprite<'a>),
             TextSprite(text::TextSprite),
         }
 
@@ -183,27 +258,26 @@ impl Renderer {
             device,
             queue,
             target_size,
-            &staged
-                .into_iter()
-                .map(|staged| match staged {
-                    Staged::Sprite(sprite) => sprite,
-                    Staged::TextSprite(text_sprite) => spright::Sprite {
-                        slice: TextureSlice::from_layer(
-                            if text_sprite.is_mask {
+            &spright::batch::batch(
+                &staged
+                    .into_iter()
+                    .map(|staged| match staged {
+                        Staged::Sprite(sprite) => sprite,
+                        Staged::TextSprite(text_sprite) => spright::batch::Sprite {
+                            texture: if text_sprite.is_mask {
                                 self.text_sprite_maker.mask_texture()
                             } else {
                                 self.text_sprite_maker.color_texture()
                             },
-                            0,
-                        )
-                        .unwrap()
-                        .slice(text_sprite.offset, text_sprite.size)
-                        .unwrap(),
-                        tint: text_sprite.tint,
-                        transform: text_sprite.transform,
-                    },
-                })
-                .collect::<Vec<_>>(),
+                            src_offset: text_sprite.offset,
+                            src_size: text_sprite.size,
+                            src_layer: 0,
+                            tint: text_sprite.tint,
+                            transform: text_sprite.transform,
+                        },
+                    })
+                    .collect::<Vec<_>>(),
+            ),
         );
 
         #[cfg(feature = "text")]

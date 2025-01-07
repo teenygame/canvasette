@@ -115,7 +115,7 @@ impl Inner {
         let mut canvas = Canvas::new();
 
         canvas.draw(
-            spright::TextureSlice::from_layer(&self.texture2, 0)
+            canvasette::TextureSlice::from_layer(&self.texture2, 0)
                 .unwrap()
                 .slice(glam::IVec2::new(0, 0), glam::UVec2::new(300, 300))
                 .unwrap(),
@@ -135,7 +135,7 @@ impl Inner {
                 * glam::Affine2::from_translation(glam::Vec2::new(2.0, 1.0)),
         );
         canvas.draw(
-            spright::TextureSlice::from_layer(&self.texture1, 0).unwrap(),
+            canvasette::TextureSlice::from_layer(&self.texture1, 0).unwrap(),
             glam::Affine2::from_translation(glam::Vec2::new(0.0, 0.0)),
         );
 
@@ -164,7 +164,7 @@ impl Inner {
 
         let mut scene = Canvas::new();
         scene.draw(
-            spright::TextureSlice::from_layer(&target, 0).unwrap(),
+            canvasette::TextureSlice::from_layer(&target, 0).unwrap(),
             glam::Affine2::from_translation(glam::Vec2::new(100.0, 100.0)),
         );
         self.renderer
