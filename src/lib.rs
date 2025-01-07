@@ -121,6 +121,11 @@ impl<'a> TextureSlice<'a> {
             rect,
         })
     }
+
+    /// Gets the size of the texture slice.
+    pub fn size(&self) -> glam::UVec2 {
+        self.rect.size
+    }
 }
 
 impl<'a> Drawable<'a> for TextureSlice<'a> {
