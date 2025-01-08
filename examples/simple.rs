@@ -1,11 +1,10 @@
 use std::sync::Arc;
 
-use canvasette::{Canvas, Drawable as _, Renderer, Texture};
-use glam::uvec2;
+use canvasette::{Canvas, Drawable as _, Renderer};
 use image::GenericImageView;
 use wgpu::{
-    Adapter, CreateSurfaceError, Device, DeviceDescriptor, PresentMode, Queue, Surface,
-    SurfaceConfiguration,
+    util::DeviceExt, Adapter, CreateSurfaceError, Device, DeviceDescriptor, PresentMode, Queue,
+    Surface, SurfaceConfiguration,
 };
 use winit::{
     application::ApplicationHandler,
@@ -40,13 +39,36 @@ impl Graphics {
 struct Inner {
     sprite1_x_pos: f32,
     renderer: Renderer,
-    texture1: Texture,
-    texture2: Texture,
+    texture1: wgpu::Texture,
+    texture2: wgpu::Texture,
 }
 
-fn load_texture(img: &image::DynamicImage) -> Texture {
+fn load_texture(
+    device: &wgpu::Device,
+    queue: &wgpu::Queue,
+    img: &image::DynamicImage,
+) -> wgpu::Texture {
     let (width, height) = img.dimensions();
-    Texture::new(img.to_rgba8().to_vec(), uvec2(width, height), 1)
+
+    device.create_texture_with_data(
+        queue,
+        &wgpu::TextureDescriptor {
+            label: None,
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8UnormSrgb,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        },
+        wgpu::util::TextureDataOrder::default(),
+        &img.to_rgba8(),
+    )
 }
 
 impl Inner {
@@ -59,8 +81,16 @@ impl Inner {
         Self {
             sprite1_x_pos: 0.0,
             renderer,
-            texture1: load_texture(&image::load_from_memory(include_bytes!("test.png")).unwrap()),
-            texture2: load_texture(&image::load_from_memory(include_bytes!("test2.png")).unwrap()),
+            texture1: load_texture(
+                &gfx.device,
+                &gfx.queue,
+                &image::load_from_memory(include_bytes!("test.png")).unwrap(),
+            ),
+            texture2: load_texture(
+                &gfx.device,
+                &gfx.queue,
+                &image::load_from_memory(include_bytes!("test2.png")).unwrap(),
+            ),
         }
     }
 
@@ -81,9 +111,6 @@ impl Inner {
                 | wgpu::TextureUsages::COPY_SRC,
             view_formats: &[],
         });
-        let target_view = target.create_view(&wgpu::TextureViewDescriptor::default());
-
-        let target = Texture::from_raw(target);
 
         let mut canvas = Canvas::new();
 
@@ -120,7 +147,7 @@ impl Inner {
         {
             let mut rpass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &target_view,
+                    view: &target.create_view(&wgpu::TextureViewDescriptor::default()),
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Load,

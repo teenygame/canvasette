@@ -65,11 +65,6 @@ impl SpriteMaker {
         }
     }
 
-    pub fn reset(&mut self, device: &wgpu::Device) {
-        self.mask_atlas.reset(device);
-        self.color_atlas.reset(device);
-    }
-
     pub fn add_font(&mut self, font: &[u8]) -> Vec<font::Attrs> {
         self.font_system
             .db_mut()

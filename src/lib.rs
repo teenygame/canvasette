@@ -1,13 +1,10 @@
 //! canvasette is a minimal library for wgpu that draws sprites and text. That's it!
 
 use glam::*;
-use image::AsImgRef;
-use wgpu::util::DeviceExt;
 
 mod atlas;
 #[cfg(feature = "text")]
 pub mod font;
-pub mod image;
 #[cfg(feature = "text")]
 mod text;
 
@@ -17,14 +14,8 @@ pub type Color = rgb::Rgba<u8>;
 #[cfg(feature = "text")]
 pub use text::PreparedText;
 
-pub struct Sprite<'a> {
-    texture_slice: TextureSlice<'a>,
-    transform: Affine2,
-    tint: crate::Color,
-}
-
 enum Command<'a> {
-    Sprite(Sprite<'a>),
+    Sprite(spright::batch::Sprite<'a>),
     #[cfg(feature = "text")]
     Text(text::Section),
 }
@@ -87,85 +78,20 @@ impl Rect {
         self.offset.y + self.size.y as i32
     }
 }
-
-pub enum Texture {
-    Managed {
-        image: image::Img<Vec<u8>>,
-        usages: wgpu::TextureUsages,
-        id: u64,
-    },
-    Unmanaged {
-        texture: wgpu::Texture,
-    },
-}
-
-impl Texture {
-    /// Creates a new texture with the given usages.
-    pub fn new_with_usages(
-        pixels: Vec<u8>,
-        size: glam::UVec2,
-        layers: u32,
-        usages: wgpu::TextureUsages,
-    ) -> Self {
-        static TEXTURE_ALLOC_COUNTER: std::sync::atomic::AtomicU64 =
-            std::sync::atomic::AtomicU64::new(0);
-
-        Self::Managed {
-            image: image::Img::new(pixels, size, layers),
-            usages,
-            id: TEXTURE_ALLOC_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
-        }
-    }
-
-    /// Creates a new texture.
-    pub fn new(pixels: Vec<u8>, size: glam::UVec2, layers: u32) -> Self {
-        Self::new_with_usages(
-            pixels,
-            size,
-            layers,
-            wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-        )
-    }
-
-    /// Gets the size of the texture.
-    pub fn size(&self) -> wgpu::Extent3d {
-        match self {
-            Texture::Managed { image, .. } => {
-                let size = image.size();
-                wgpu::Extent3d {
-                    width: size.x,
-                    height: size.y,
-                    depth_or_array_layers: image.layers(),
-                }
-            }
-            Texture::Unmanaged { texture } => texture.size(),
-        }
-    }
-
-    /// Creates the texture from a raw [`wgpu::Texture`].
-    ///
-    /// Note that you will need to manage the application suspend/resume lifecycle yourself, as GPU textures will be invalidated on suspend.
-    pub fn from_raw(texture: wgpu::Texture) -> Self {
-        Self::Unmanaged { texture }
-    }
-}
-
 /// Represents a slice of a texture to draw.
-#[derive(Clone, Copy)]
+#[derive(Debug, Clone, Copy)]
 pub struct TextureSlice<'a> {
-    texture: &'a Texture,
+    texture: &'a wgpu::Texture,
     layer: u32,
     rect: Rect,
 }
-
 impl<'a> TextureSlice<'a> {
     /// Creates a new texture slice from a raw texture.
-    pub fn from_layer(texture: &'a Texture, layer: u32) -> Option<Self> {
+    pub fn from_layer(texture: &'a wgpu::Texture, layer: u32) -> Option<Self> {
         let size = texture.size();
         if layer >= size.depth_or_array_layers {
             return None;
         }
-
         Some(Self {
             texture,
             layer,
@@ -204,11 +130,16 @@ impl<'a> TextureSlice<'a> {
 
 impl<'a> Drawable<'a> for TextureSlice<'a> {
     fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: glam::Affine2) {
-        canvas.commands.push(Command::Sprite(Sprite {
-            texture_slice: *self,
-            transform,
-            tint,
-        }));
+        canvas
+            .commands
+            .push(Command::Sprite(spright::batch::Sprite {
+                transform,
+                tint,
+                texture: &self.texture,
+                src_offset: self.rect.offset,
+                src_size: self.rect.size,
+                src_layer: self.layer,
+            }));
     }
 }
 
@@ -251,7 +182,6 @@ impl<'a> Canvas<'a> {
 /// Encapsulates renderer state.
 pub struct Renderer {
     renderer: spright::Renderer,
-    textures: std::collections::HashMap<u64, wgpu::Texture>,
     #[cfg(feature = "text")]
     text_sprite_maker: text::SpriteMaker,
 }
@@ -269,7 +199,6 @@ impl Renderer {
     pub fn new(device: &wgpu::Device, texture_format: wgpu::TextureFormat) -> Self {
         Self {
             renderer: spright::Renderer::new(device, texture_format),
-            textures: std::collections::HashMap::new(),
             #[cfg(feature = "text")]
             text_sprite_maker: text::SpriteMaker::new(device),
         }
@@ -293,17 +222,6 @@ impl Renderer {
             .prepare(contents.as_ref(), metrics, attrs)
     }
 
-    pub fn suspend(&mut self) {
-        self.textures.clear();
-    }
-
-    pub fn resume(&mut self, device: &wgpu::Device) {
-        #[cfg(feature = "text")]
-        {
-            self.text_sprite_maker.reset(device);
-        }
-    }
-
     /// Prepares a scene for rendering.
     pub fn prepare(
         &mut self,
@@ -314,31 +232,6 @@ impl Renderer {
     ) -> Result<(), Error> {
         let mut staged = vec![];
 
-        // First pass: upload all textures we need, if they're not already uploaded.
-        for cmd in canvas.commands.iter() {
-            if let Command::Sprite(sprite) = cmd {
-                if let Texture::Managed { image, usages, id } = sprite.texture_slice.texture {
-                    self.textures.entry(*id).or_insert_with(|| {
-                        device.create_texture_with_data(
-                            queue,
-                            &wgpu::TextureDescriptor {
-                                label: None,
-                                size: sprite.texture_slice.texture.size(),
-                                mip_level_count: 1,
-                                sample_count: 1,
-                                dimension: wgpu::TextureDimension::D2,
-                                format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                                usage: *usages,
-                                view_formats: &[],
-                            },
-                            wgpu::util::TextureDataOrder::default(),
-                            image.as_ref().as_buf(),
-                        )
-                    });
-                }
-            }
-        }
-
         enum Staged<'a> {
             Sprite(spright::batch::Sprite<'a>),
             TextSprite(text::TextSprite),
@@ -347,19 +240,8 @@ impl Renderer {
         for cmd in canvas.commands.iter() {
             match cmd {
                 Command::Sprite(sprite) => {
-                    staged.push(Staged::Sprite(spright::batch::Sprite {
-                        texture: match sprite.texture_slice.texture {
-                            Texture::Managed { id, .. } => self.textures.get(id).unwrap(),
-                            Texture::Unmanaged { texture } => texture,
-                        },
-                        src_offset: sprite.texture_slice.rect.offset,
-                        src_size: sprite.texture_slice.rect.size,
-                        src_layer: sprite.texture_slice.layer,
-                        transform: sprite.transform,
-                        tint: sprite.tint,
-                    }));
+                    staged.push(Staged::Sprite(sprite.clone()));
                 }
-
                 Command::Text(section) => {
                     staged.extend(
                         self.text_sprite_maker
