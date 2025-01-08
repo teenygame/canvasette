@@ -115,14 +115,13 @@ impl Inner {
         );
 
         canvas.draw(
-            self.renderer
-                .prepare_text(
-                    font_system,
-                    format!("HELLO WORLD {}", self.sprite1_x_pos),
-                    canvasette::font::Metrics::relative(200.0, 1.0),
-                    canvasette::font::Attrs::default(),
-                )
-                .tinted(canvasette::Color::new(0xff, 0xff, 0x00, 0xff)),
+            canvasette::PreparedText::new(
+                font_system,
+                &format!("HELLO WORLD {}", self.sprite1_x_pos),
+                canvasette::font::Metrics::relative(200.0, 1.0),
+                canvasette::font::Attrs::default(),
+            )
+            .tinted(canvasette::Color::new(0xff, 0xff, 0x00, 0xff)),
             glam::Affine2::from_angle(self.sprite1_x_pos * 0.01)
                 * glam::Affine2::from_translation(glam::Vec2::new(2.0, 1.0)),
         );

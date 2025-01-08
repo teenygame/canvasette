@@ -32,6 +32,27 @@ pub struct SpriteMaker {
 pub struct PreparedText(cosmic_text::Buffer);
 
 impl PreparedText {
+    /// Creates a new run of prepared text.
+    pub fn new(
+        font_system: &mut cosmic_text::FontSystem,
+        contents: &str,
+        metrics: font::Metrics,
+        attrs: font::Attrs,
+    ) -> Self {
+        let mut buffer = cosmic_text::Buffer::new(font_system, metrics);
+        buffer.set_text(
+            font_system,
+            contents,
+            cosmic_text::Attrs::new()
+                .family(attrs.family.as_family())
+                .stretch(attrs.stretch)
+                .style(attrs.style)
+                .weight(attrs.weight),
+            cosmic_text::Shaping::Advanced,
+        );
+        Self(buffer)
+    }
+
     /// Computes the size of the text.
     pub fn size(&self) -> glam::Vec2 {
         glam::Vec2::new(
@@ -66,27 +87,6 @@ impl SpriteMaker {
 
     pub fn color_texture(&self) -> &wgpu::Texture {
         self.color_atlas.texture()
-    }
-
-    pub fn prepare(
-        &mut self,
-        font_system: &mut cosmic_text::FontSystem,
-        contents: &str,
-        metrics: font::Metrics,
-        attrs: font::Attrs,
-    ) -> PreparedText {
-        let mut buffer = cosmic_text::Buffer::new(font_system, metrics);
-        buffer.set_text(
-            font_system,
-            contents,
-            cosmic_text::Attrs::new()
-                .family(attrs.family.as_family())
-                .stretch(attrs.stretch)
-                .style(attrs.style)
-                .weight(attrs.weight),
-            cosmic_text::Shaping::Advanced,
-        );
-        PreparedText(buffer)
     }
 
     pub fn make(

@@ -310,19 +310,6 @@ impl Renderer {
         }
     }
 
-    /// Prepares text for rendering.
-    #[cfg(feature = "text")]
-    pub fn prepare_text(
-        &mut self,
-        font_system: &mut cosmic_text::FontSystem,
-        contents: impl AsRef<str>,
-        metrics: font::Metrics,
-        attrs: font::Attrs,
-    ) -> text::PreparedText {
-        self.text_sprite_maker
-            .prepare(font_system, contents.as_ref(), metrics, attrs)
-    }
-
     /// Prepares a scene for rendering.
     pub fn prepare(
         &mut self,
