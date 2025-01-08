@@ -63,6 +63,10 @@ where
         }
     }
 
+    pub fn reset(&mut self, device: &wgpu::Device) {
+        *self = Self::new_with_initial_size(device, self.texture().size());
+    }
+
     fn resize(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, size: wgpu::Extent3d) -> bool {
         let mut atlas = Self::new_with_initial_size(device, size);
 
