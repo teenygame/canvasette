@@ -2,11 +2,16 @@
 
 use glam::*;
 
+use wgpu::util::DeviceExt;
+
 mod atlas;
+mod cache;
 #[cfg(feature = "text")]
 pub mod font;
 #[cfg(feature = "text")]
 mod text;
+
+pub use cache::Cache;
 
 /// 8-bit RGBA color.
 pub type Color = rgb::Rgba<u8>;
@@ -14,8 +19,17 @@ pub type Color = rgb::Rgba<u8>;
 #[cfg(feature = "text")]
 pub use text::PreparedText;
 
+struct Sprite<'a> {
+    texture: &'a dyn Texture,
+    src_offset: IVec2,
+    src_size: UVec2,
+    src_layer: u32,
+    transform: Affine2,
+    tint: Color,
+}
+
 enum Command<'a> {
-    Sprite(spright::batch::Sprite<'a>),
+    Sprite(Sprite<'a>),
     #[cfg(feature = "text")]
     Text(text::Section),
 }
@@ -58,6 +72,7 @@ struct Rect {
     offset: IVec2,
     size: UVec2,
 }
+
 impl Rect {
     fn new(x: i32, y: i32, width: u32, height: u32) -> Self {
         Self {
@@ -78,16 +93,121 @@ impl Rect {
         self.offset.y + self.size.y as i32
     }
 }
+
+/// Trait for textures.
+///
+/// These textures can either be resident on the CPU, in which case they must be uploaded as needed; or on the GPU, on which case they can be used directly but you must manage the lifecycle of textures yourself.
+pub trait Texture {
+    /// The size of the texture.
+    fn size(&self) -> wgpu::Extent3d;
+
+    /// Uploads the texture to the GPU.
+    ///
+    /// If the texture is already uploaded, does nothing.
+    fn upload_to_wgpu(&self, device: &wgpu::Device, queue: &wgpu::Queue, cache: &mut cache::Cache);
+
+    /// Gets the wgpu texture.
+    ///
+    /// If the texture is not uploaded yet, returns [`None`].
+    fn get_wgpu_texture<'a>(&'a self, cache: &'a cache::Cache) -> Option<&'a wgpu::Texture>;
+}
+
+/// An image.
+///
+/// This is a texture that may be reuploaded to the GPU as necessary.
+pub struct Image {
+    id: u64,
+    pixels: Vec<u8>,
+    size: wgpu::Extent3d,
+    usages: wgpu::TextureUsages,
+}
+
+impl Image {
+    /// Creates a new image.
+    pub fn new(pixels: Vec<u8>, size: wgpu::Extent3d, usages: wgpu::TextureUsages) -> Self {
+        static IMAGE_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+        Self {
+            id: IMAGE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
+            pixels,
+            size,
+            usages,
+        }
+    }
+}
+
+impl Texture for Image {
+    fn size(&self) -> wgpu::Extent3d {
+        self.size
+    }
+
+    fn upload_to_wgpu(&self, device: &wgpu::Device, queue: &wgpu::Queue, cache: &mut cache::Cache) {
+        cache.insert_if_not_exists(self.id, || {
+            device.create_texture_with_data(
+                queue,
+                &wgpu::TextureDescriptor {
+                    label: None,
+                    size: self.size,
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                    usage: self.usages,
+                    view_formats: &[],
+                },
+                wgpu::util::TextureDataOrder::default(),
+                &self.pixels,
+            )
+        });
+    }
+
+    fn get_wgpu_texture<'a>(&'a self, cache: &'a cache::Cache) -> Option<&'a wgpu::Texture> {
+        cache.get(self.id)
+    }
+}
+
+impl Texture for wgpu::Texture {
+    fn size(&self) -> wgpu::Extent3d {
+        self.size()
+    }
+
+    fn upload_to_wgpu(
+        &self,
+        _device: &wgpu::Device,
+        _queue: &wgpu::Queue,
+        _cache: &mut cache::Cache,
+    ) {
+    }
+
+    fn get_wgpu_texture<'a>(&'a self, _cache: &'a cache::Cache) -> Option<&'a wgpu::Texture> {
+        Some(self)
+    }
+}
+
 /// Represents a slice of a texture to draw.
-#[derive(Debug, Clone, Copy)]
-pub struct TextureSlice<'a> {
-    texture: &'a wgpu::Texture,
+pub struct TextureSlice<'a, T> {
+    texture: &'a T,
     layer: u32,
     rect: Rect,
 }
-impl<'a> TextureSlice<'a> {
+
+impl<'a, T> Clone for TextureSlice<'a, T> {
+    fn clone(&self) -> Self {
+        Self {
+            texture: self.texture,
+            layer: self.layer,
+            rect: self.rect,
+        }
+    }
+}
+
+impl<'a, T> Copy for TextureSlice<'a, T> {}
+
+impl<'a, T> TextureSlice<'a, T>
+where
+    T: Texture,
+{
     /// Creates a new texture slice from a raw texture.
-    pub fn from_layer(texture: &'a wgpu::Texture, layer: u32) -> Option<Self> {
+    pub fn from_layer(texture: &'a T, layer: u32) -> Option<Self> {
         let size = texture.size();
         if layer >= size.depth_or_array_layers {
             return None;
@@ -98,6 +218,7 @@ impl<'a> TextureSlice<'a> {
             rect: Rect::new(0, 0, size.width, size.height),
         })
     }
+
     /// Slices the texture slice.
     ///
     /// Note that `offset` represents an offset into the slice and not into the overall texture -- the returned slice's offset will be the current offset + new offset.
@@ -128,18 +249,19 @@ impl<'a> TextureSlice<'a> {
     }
 }
 
-impl<'a> Drawable<'a> for TextureSlice<'a> {
+impl<'a, T> Drawable<'a> for TextureSlice<'a, T>
+where
+    T: Texture,
+{
     fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: glam::Affine2) {
-        canvas
-            .commands
-            .push(Command::Sprite(spright::batch::Sprite {
-                transform,
-                tint,
-                texture: &self.texture,
-                src_offset: self.rect.offset,
-                src_size: self.rect.size,
-                src_layer: self.layer,
-            }));
+        canvas.commands.push(Command::Sprite(Sprite {
+            transform,
+            tint,
+            texture: self.texture,
+            src_offset: self.rect.offset,
+            src_size: self.rect.size,
+            src_layer: self.layer,
+        }));
     }
 }
 
@@ -222,6 +344,7 @@ impl Renderer {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        cache: &mut cache::Cache,
         font_system: &mut cosmic_text::FontSystem,
         target_size: wgpu::Extent3d,
         canvas: &Canvas,
@@ -234,9 +357,22 @@ impl Renderer {
         }
 
         for cmd in canvas.commands.iter() {
+            if let Command::Sprite(sprite) = cmd {
+                sprite.texture.upload_to_wgpu(device, queue, cache);
+            }
+        }
+
+        for cmd in canvas.commands.iter() {
             match cmd {
                 Command::Sprite(sprite) => {
-                    staged.push(Staged::Sprite(sprite.clone()));
+                    staged.push(Staged::Sprite(spright::batch::Sprite {
+                        texture: sprite.texture.get_wgpu_texture(cache).unwrap(),
+                        src_offset: sprite.src_offset,
+                        src_size: sprite.src_size,
+                        src_layer: sprite.src_layer,
+                        transform: sprite.transform,
+                        tint: sprite.tint,
+                    }));
                 }
                 Command::Text(section) => {
                     staged.extend(
