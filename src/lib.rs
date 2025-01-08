@@ -16,7 +16,7 @@ type Cache = std::collections::HashMap<u64, wgpu::Texture>;
 pub type Color = rgb::Rgba<u8>;
 
 #[cfg(feature = "text")]
-pub use text::PreparedText;
+pub use text::Label;
 
 struct Sprite<'a> {
     texture: &'a dyn Texture,
@@ -56,10 +56,10 @@ where
 }
 
 #[cfg(feature = "text")]
-impl<'a> Drawable<'a> for text::PreparedText {
+impl<'a> Drawable<'a> for text::Label {
     fn draw(&self, canvas: &mut Canvas<'a>, tint: Color, transform: glam::Affine2) {
         canvas.commands.push(Command::Text(text::Section {
-            prepared: self.clone(),
+            label: self.clone(),
             transform,
             tint,
         }));
@@ -349,7 +349,7 @@ impl Renderer {
                 Command::Text(section) => {
                     staged.extend(
                         self.text_sprite_maker
-                            .make(device, queue, font_system, &section.prepared, section.tint)
+                            .make(device, queue, font_system, &section.label, section.tint)
                             .ok_or(Error::OutOfGlyphAtlasSpace)?
                             .into_iter()
                             .map(|s| {

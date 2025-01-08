@@ -13,7 +13,7 @@ pub struct TextSprite {
 }
 
 pub struct Section {
-    pub prepared: PreparedText,
+    pub label: Label,
     pub transform: glam::Affine2,
     pub tint: Color,
 }
@@ -29,10 +29,10 @@ pub struct SpriteMaker {
 
 /// Text that has been laid out and shaped.
 #[derive(Clone)]
-pub struct PreparedText(cosmic_text::Buffer);
+pub struct Label(cosmic_text::Buffer);
 
-impl PreparedText {
-    /// Creates a new run of prepared text.
+impl Label {
+    /// Creates a new run of text.
     pub fn new(
         font_system: &mut cosmic_text::FontSystem,
         contents: &str,
@@ -94,12 +94,12 @@ impl SpriteMaker {
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         font_system: &mut cosmic_text::FontSystem,
-        prepared_text: &PreparedText,
+        label: &Label,
         color: Color,
     ) -> Option<Vec<TextSprite>> {
         let mut text_sprites = vec![];
 
-        for run in prepared_text.0.layout_runs() {
+        for run in label.0.layout_runs() {
             for glyph in run.glyphs.iter() {
                 let physical_glyph = glyph.physical((0., 0.), 1.0);
                 let Some(image) = self

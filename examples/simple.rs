@@ -115,7 +115,7 @@ impl Inner {
         );
 
         canvas.draw(
-            canvasette::PreparedText::new(
+            canvasette::Label::new(
                 font_system,
                 &format!("HELLO WORLD {}", self.sprite1_x_pos),
                 canvasette::font::Metrics::relative(200.0, 1.0),
