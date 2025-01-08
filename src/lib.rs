@@ -118,42 +118,31 @@ pub trait Texture {
 pub struct Image {
     id: u64,
     pixels: Vec<u8>,
-    size: wgpu::Extent3d,
-    usages: wgpu::TextureUsages,
+    desc: wgpu::TextureDescriptor<'static>,
 }
 
 impl Image {
     /// Creates a new image.
-    pub fn new(pixels: Vec<u8>, size: wgpu::Extent3d, usages: wgpu::TextureUsages) -> Self {
+    pub fn new(pixels: Vec<u8>, desc: wgpu::TextureDescriptor<'static>) -> Self {
         static IMAGE_ID: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         Self {
             id: IMAGE_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             pixels,
-            size,
-            usages,
+            desc,
         }
     }
 }
 
 impl Texture for Image {
     fn size(&self) -> wgpu::Extent3d {
-        self.size
+        self.desc.size
     }
 
     fn upload_to_wgpu(&self, device: &wgpu::Device, queue: &wgpu::Queue, cache: &mut cache::Cache) {
         cache.insert_if_not_exists(self.id, || {
             device.create_texture_with_data(
                 queue,
-                &wgpu::TextureDescriptor {
-                    label: None,
-                    size: self.size,
-                    mip_level_count: 1,
-                    sample_count: 1,
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
-                    usage: self.usages,
-                    view_formats: &[],
-                },
+                &self.desc,
                 wgpu::util::TextureDataOrder::default(),
                 &self.pixels,
             )
