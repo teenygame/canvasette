@@ -5,13 +5,12 @@ use glam::*;
 use wgpu::util::DeviceExt;
 
 mod atlas;
-mod cache;
 #[cfg(feature = "text")]
 pub mod font;
 #[cfg(feature = "text")]
 mod text;
 
-pub use cache::Cache;
+type Cache = std::collections::HashMap<u64, wgpu::Texture>;
 
 /// 8-bit RGBA color.
 pub type Color = rgb::Rgba<u8>;
@@ -104,12 +103,12 @@ pub trait Texture {
     /// Uploads the texture to the GPU.
     ///
     /// If the texture is already uploaded, does nothing.
-    fn upload_to_wgpu(&self, device: &wgpu::Device, queue: &wgpu::Queue, cache: &mut cache::Cache);
+    fn upload_to_wgpu(&self, device: &wgpu::Device, queue: &wgpu::Queue, cache: &mut Cache);
 
     /// Gets the wgpu texture.
     ///
     /// If the texture is not uploaded yet, returns [`None`].
-    fn get_wgpu_texture<'a>(&'a self, cache: &'a cache::Cache) -> Option<&'a wgpu::Texture>;
+    fn get_wgpu_texture<'a>(&'a self, cache: &'a Cache) -> Option<&'a wgpu::Texture>;
 }
 
 /// An image.
@@ -138,8 +137,8 @@ impl Texture for Image {
         self.desc.size
     }
 
-    fn upload_to_wgpu(&self, device: &wgpu::Device, queue: &wgpu::Queue, cache: &mut cache::Cache) {
-        cache.insert_if_not_exists(self.id, || {
+    fn upload_to_wgpu(&self, device: &wgpu::Device, queue: &wgpu::Queue, cache: &mut Cache) {
+        cache.entry(self.id).or_insert_with(|| {
             device.create_texture_with_data(
                 queue,
                 &self.desc,
@@ -149,8 +148,8 @@ impl Texture for Image {
         });
     }
 
-    fn get_wgpu_texture<'a>(&'a self, cache: &'a cache::Cache) -> Option<&'a wgpu::Texture> {
-        cache.get(self.id)
+    fn get_wgpu_texture<'a>(&'a self, cache: &'a Cache) -> Option<&'a wgpu::Texture> {
+        cache.get(&self.id)
     }
 }
 
@@ -159,15 +158,9 @@ impl Texture for wgpu::Texture {
         self.size()
     }
 
-    fn upload_to_wgpu(
-        &self,
-        _device: &wgpu::Device,
-        _queue: &wgpu::Queue,
-        _cache: &mut cache::Cache,
-    ) {
-    }
+    fn upload_to_wgpu(&self, _device: &wgpu::Device, _queue: &wgpu::Queue, _cache: &mut Cache) {}
 
-    fn get_wgpu_texture<'a>(&'a self, _cache: &'a cache::Cache) -> Option<&'a wgpu::Texture> {
+    fn get_wgpu_texture<'a>(&'a self, _cache: &'a Cache) -> Option<&'a wgpu::Texture> {
         Some(self)
     }
 }
@@ -293,6 +286,7 @@ impl<'a> Canvas<'a> {
 /// Encapsulates renderer state.
 pub struct Renderer {
     renderer: spright::Renderer,
+    cache: Cache,
     #[cfg(feature = "text")]
     text_sprite_maker: text::SpriteMaker,
 }
@@ -310,6 +304,7 @@ impl Renderer {
     pub fn new(device: &wgpu::Device, texture_format: wgpu::TextureFormat) -> Self {
         Self {
             renderer: spright::Renderer::new(device, texture_format),
+            cache: Cache::new(),
             #[cfg(feature = "text")]
             text_sprite_maker: text::SpriteMaker::new(device),
         }
@@ -333,7 +328,6 @@ impl Renderer {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        cache: &mut cache::Cache,
         font_system: &mut cosmic_text::FontSystem,
         target_size: wgpu::Extent3d,
         canvas: &Canvas,
@@ -347,7 +341,9 @@ impl Renderer {
 
         for cmd in canvas.commands.iter() {
             if let Command::Sprite(sprite) = cmd {
-                sprite.texture.upload_to_wgpu(device, queue, cache);
+                sprite
+                    .texture
+                    .upload_to_wgpu(device, queue, &mut self.cache);
             }
         }
 
@@ -355,7 +351,7 @@ impl Renderer {
             match cmd {
                 Command::Sprite(sprite) => {
                     staged.push(Staged::Sprite(spright::batch::Sprite {
-                        texture: sprite.texture.get_wgpu_texture(cache).unwrap(),
+                        texture: sprite.texture.get_wgpu_texture(&self.cache).unwrap(),
                         src_offset: sprite.src_offset,
                         src_size: sprite.src_size,
                         src_layer: sprite.src_layer,

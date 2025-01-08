@@ -25,7 +25,6 @@ struct Graphics {
     device: Device,
     adapter: Adapter,
     queue: Queue,
-    cache: canvasette::Cache,
 }
 
 impl Graphics {
@@ -84,7 +83,6 @@ impl Inner {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        cache: &mut canvasette::Cache,
         font_system: &mut cosmic_text::FontSystem,
         texture: &wgpu::Texture,
     ) {
@@ -134,7 +132,7 @@ impl Inner {
         );
 
         self.renderer
-            .prepare(device, queue, cache, font_system, target.size(), &canvas)
+            .prepare(device, queue, font_system, target.size(), &canvas)
             .unwrap();
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -162,7 +160,7 @@ impl Inner {
             glam::Affine2::from_translation(glam::Vec2::new(100.0, 100.0)),
         );
         self.renderer
-            .prepare(device, queue, cache, font_system, texture.size(), &scene)
+            .prepare(device, queue, font_system, texture.size(), &scene)
             .unwrap();
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -233,7 +231,6 @@ async fn create_graphics(window: Arc<Window>) -> Result<Graphics, CreateSurfaceE
         adapter,
         device,
         queue,
-        cache: canvasette::Cache::new(),
     })
 }
 
@@ -288,7 +285,6 @@ impl ApplicationHandler<UserEvent> for Application {
                 inner.render(
                     &gfx.device,
                     &gfx.queue,
-                    &mut gfx.cache,
                     &mut self.font_system,
                     &frame.texture,
                 );
