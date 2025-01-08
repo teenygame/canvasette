@@ -19,7 +19,6 @@ pub struct Section {
 }
 
 pub struct SpriteMaker {
-    font_system: cosmic_text::FontSystem,
     swash_cache: cosmic_text::SwashCache,
     mask_atlas: Atlas<cosmic_text::CacheKey, u8>,
     color_atlas: Atlas<cosmic_text::CacheKey, rgb::Rgba<u8>>,
@@ -53,35 +52,12 @@ impl PreparedText {
 impl SpriteMaker {
     pub fn new(device: &wgpu::Device) -> Self {
         Self {
-            font_system: cosmic_text::FontSystem::new_with_locale_and_db(
-                sys_locale::get_locale().unwrap_or_else(|| "en-US".to_string()),
-                cosmic_text::fontdb::Database::new(),
-            ),
             swash_cache: cosmic_text::SwashCache::new(),
             mask_atlas: Atlas::new(device),
             color_atlas: Atlas::new(device),
             draw_count: 0,
             last_draw_at: IndexMap::new(),
         }
-    }
-
-    pub fn add_font(&mut self, font: &[u8]) -> Vec<font::Attrs> {
-        self.font_system
-            .db_mut()
-            .load_font_source(cosmic_text::fontdb::Source::Binary(std::sync::Arc::new(
-                font.to_vec(),
-            )))
-            .into_iter()
-            .flat_map(|id| {
-                let face_info = self.font_system.db().face(id)?;
-                Some(font::Attrs {
-                    family: font::Family::Name(face_info.families.first()?.0.clone()),
-                    stretch: face_info.stretch,
-                    style: face_info.style,
-                    weight: face_info.weight,
-                })
-            })
-            .collect::<Vec<_>>()
     }
 
     pub fn mask_texture(&self) -> &wgpu::Texture {
@@ -94,13 +70,14 @@ impl SpriteMaker {
 
     pub fn prepare(
         &mut self,
+        font_system: &mut cosmic_text::FontSystem,
         contents: &str,
         metrics: font::Metrics,
         attrs: font::Attrs,
     ) -> PreparedText {
-        let mut buffer = cosmic_text::Buffer::new(&mut self.font_system, metrics);
+        let mut buffer = cosmic_text::Buffer::new(font_system, metrics);
         buffer.set_text(
-            &mut self.font_system,
+            font_system,
             contents,
             cosmic_text::Attrs::new()
                 .family(attrs.family.as_family())
@@ -116,6 +93,7 @@ impl SpriteMaker {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        font_system: &mut cosmic_text::FontSystem,
         prepared_text: &PreparedText,
         color: Color,
     ) -> Option<Vec<TextSprite>> {
@@ -126,7 +104,7 @@ impl SpriteMaker {
                 let physical_glyph = glyph.physical((0., 0.), 1.0);
                 let Some(image) = self
                     .swash_cache
-                    .get_image(&mut self.font_system, physical_glyph.cache_key)
+                    .get_image(font_system, physical_glyph.cache_key)
                     .as_ref()
                 else {
                     continue;

@@ -73,11 +73,11 @@ fn load_texture(
 
 impl Inner {
     fn new(gfx: &Graphics) -> Self {
-        let mut renderer = Renderer::new(
+        let renderer = Renderer::new(
             &gfx.device,
             gfx.surface.get_capabilities(&gfx.adapter).formats[0],
         );
-        renderer.add_font(include_bytes!("NotoSans-Regular.ttf"));
+
         Self {
             sprite1_x_pos: 0.0,
             renderer,
@@ -94,7 +94,13 @@ impl Inner {
         }
     }
 
-    pub fn render(&mut self, device: &wgpu::Device, queue: &wgpu::Queue, texture: &wgpu::Texture) {
+    pub fn render(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        texture: &wgpu::Texture,
+        font_system: &mut cosmic_text::FontSystem,
+    ) {
         let target = device.create_texture(&wgpu::TextureDescriptor {
             label: None,
             size: wgpu::Extent3d {
@@ -126,6 +132,7 @@ impl Inner {
         canvas.draw(
             self.renderer
                 .prepare_text(
+                    font_system,
                     format!("HELLO WORLD {}", self.sprite1_x_pos),
                     canvasette::font::Metrics::relative(200.0, 1.0),
                     canvasette::font::Attrs::default(),
@@ -140,7 +147,7 @@ impl Inner {
         );
 
         self.renderer
-            .prepare(device, queue, target.size(), &canvas)
+            .prepare(device, queue, font_system, target.size(), &canvas)
             .unwrap();
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -168,7 +175,7 @@ impl Inner {
             glam::Affine2::from_translation(glam::Vec2::new(100.0, 100.0)),
         );
         self.renderer
-            .prepare(device, queue, texture.size(), &scene)
+            .prepare(device, queue, font_system, texture.size(), &scene)
             .unwrap();
         let mut encoder =
             device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -192,6 +199,7 @@ impl Inner {
 
 struct Application {
     event_loop_proxy: EventLoopProxy<UserEvent>,
+    font_system: cosmic_text::FontSystem,
     gfx: Option<Graphics>,
     inner: Option<Inner>,
 }
@@ -289,7 +297,12 @@ impl ApplicationHandler<UserEvent> for Application {
                     .surface
                     .get_current_texture()
                     .expect("Failed to acquire next swap chain texture");
-                inner.render(&gfx.device, &gfx.queue, &frame.texture);
+                inner.render(
+                    &gfx.device,
+                    &gfx.queue,
+                    &frame.texture,
+                    &mut self.font_system,
+                );
                 gfx.window.pre_present_notify();
                 frame.present();
                 gfx.window.request_redraw();
@@ -313,9 +326,19 @@ impl ApplicationHandler<UserEvent> for Application {
 
 fn main() {
     let event_loop = EventLoop::with_user_event().build().unwrap();
+
+    let mut font_system = cosmic_text::FontSystem::new_with_locale_and_db(
+        sys_locale::get_locale().unwrap_or_else(|| "en-US".to_string()),
+        cosmic_text::fontdb::Database::new(),
+    );
+    font_system
+        .db_mut()
+        .load_font_data(include_bytes!("NotoSans-Regular.ttf").to_vec());
+
     let mut app = Application {
         gfx: None,
         inner: None,
+        font_system,
         event_loop_proxy: event_loop.create_proxy(),
     };
     event_loop.run_app(&mut app).unwrap();

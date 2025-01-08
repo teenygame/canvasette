@@ -204,22 +204,17 @@ impl Renderer {
         }
     }
 
-    /// Adds a font to the renderer, returning attributes for each face in the font.
-    #[cfg(feature = "text")]
-    pub fn add_font(&mut self, font: &[u8]) -> Vec<font::Attrs> {
-        self.text_sprite_maker.add_font(font)
-    }
-
     /// Prepares text for rendering.
     #[cfg(feature = "text")]
     pub fn prepare_text(
         &mut self,
+        font_system: &mut cosmic_text::FontSystem,
         contents: impl AsRef<str>,
         metrics: font::Metrics,
         attrs: font::Attrs,
     ) -> text::PreparedText {
         self.text_sprite_maker
-            .prepare(contents.as_ref(), metrics, attrs)
+            .prepare(font_system, contents.as_ref(), metrics, attrs)
     }
 
     /// Prepares a scene for rendering.
@@ -227,6 +222,7 @@ impl Renderer {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        font_system: &mut cosmic_text::FontSystem,
         target_size: wgpu::Extent3d,
         canvas: &Canvas,
     ) -> Result<(), Error> {
@@ -245,7 +241,7 @@ impl Renderer {
                 Command::Text(section) => {
                     staged.extend(
                         self.text_sprite_maker
-                            .make(device, queue, &section.prepared, section.tint)
+                            .make(device, queue, font_system, &section.prepared, section.tint)
                             .ok_or(Error::OutOfGlyphAtlasSpace)?
                             .into_iter()
                             .map(|s| {
